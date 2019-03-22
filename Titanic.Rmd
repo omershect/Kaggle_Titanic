@@ -1,0 +1,491 @@
+---
+title: 'Titanic: Machine Learning from Disaster'
+author: "Omer Shechter"
+date: "March 2019"
+output:
+  html_document:
+    toc: true
+    toccolor: 'blue'
+    header-includes:
+    - \usepackage {hyperref}
+    - \hypersetup {colorlinks = true, linkcolor = blue, urlcolor = blue}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE )
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(data.table)
+library(scales)
+library(tidytext)
+library(quanteda)
+library(data.table)
+library(GGally)
+library(varhandle)
+library(gridExtra)
+```
+
+# Titanic: Machine Learning from Disaster
+
+An R markdown for providing my approach to the Titanic
+Competition in Kaggle 
+
+# Exploratory Data 
+
+## Loading the train set 
+```{r date load}
+setwd("E:/Elements/kaggle/Kaggle_Titanic")
+train<-read.csv("train.csv")
+Rawtrain<-train
+
+```
+
+First, Let's review the data.
+```{r train data}
+#Create a table of the first ten observations
+kable(head(Rawtrain)) %>%
+  kable_styling("striped", full_width = F) %>%
+  add_indent(c(1, 3, 5))
+```
+
+The label data, what we need to predict is the Survival column 
+0 - No 
+1-  Yes 
+This set is a classification set.
+
+One of the first steps is to take a look if the labels are not skew and we have a balance classification. 
+
+
+```{r bar plot survivved }
+
+# Using the ggplot Package                         
+# Plotting a Bar plot of the Survivles Vs. Death   
+
+p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived)))+ 
+  geom_bar(aes(y = (..count..)) , fill = c('red','green'))
+p<-p+xlab("Survived: 0 - No , 1 - Yes") + ylab("Count")
+p<-p+labs(title="Survives Versus No Survivors counts ")
+p<-p+geom_text(aes(y = (..count..),label =   ifelse((..count..)==0,"",
+  scales::percent((..count..)/sum(..count..)))), stat="count",colour="black") 
+p
+```
+
+There is some skew as the number of Survival is smaller (ratio of 60%:40%)
+To be handled later.
+
+
+## Missing Data 
+
+Let's review how much data we are missing. 
+Note: Some of the string variables have empty data and not null 
+so first, we replace Empty data by NA 
+```{r}
+Rawtrain<-Rawtrain %>% 
+       mutate(Cabin = if_else(as.character(Cabin)=="", NA_character_ ,as.character(Cabin)))
+
+Rawtrain<-Rawtrain %>% 
+       mutate(Ticket = if_else(as.character(Ticket)=="", NA_character_ ,as.character(Ticket)))
+
+Rawtrain<-Rawtrain %>% 
+       mutate(Embarked = if_else(as.character(Embarked)=="", NA_character_ ,as.character(Embarked)))
+
+
+```
+
+
+```{r}
+ inspect.na(Rawtrain, barplot=TRUE)
+```
+
+Age and Cabin has a relatively high amount of missing data.
+
+### Sex
+
+The First Parameter We will review is the Sex.
+
+```{r}
+
+
+
+
+p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived),fill=Sex))+geom_bar()
+p<-p+scale_fill_manual("legend", values = c("male" = "blue", "female" = "red"))
+p<-p+xlab("Survived: 0 - No, 1 - Yes") + ylab("Count")
+p<-p+labs(title="Survives Vs. No Survivors Based on Sex ")
+p<-p+geom_text(aes(label=..count..),stat="count",position=position_stack(0.5))
+p
+```
+
+
+```{r}
+kable(table(Rawtrain$Sex)) %>%
+  kable_styling("striped", full_width = F) 
+  
+```
+
+Checking the Correlation 
+To check Correlation we create a Categorical variable 
+1 - Female
+0 - Sex 
+
+```{r}
+Rawtrain<-mutate(Rawtrain,Sexb=ifelse(Sex=="female",1,0))
+ggpairs(subset(Rawtrain,select=c("Survived", "Sexb")))
+```
+
+Conclusion :
+1. No Missing data or NA 
+2. There is some correlation between Sex and Survival 
+2. Sex looks like a good predictor/Feature to use 
+
+
+### Age 
+
+
+```{r}
+p<-ggplot(Rawtrain,aes(x=Age,group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_density(alpha = 0.5)
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+
+p
+```
+
+Later we will use the Data from the Sex and names to complete the missing data. 
+Checking for outliers and another way to look at the relation between Age and survivals.
+
+```{r}
+p<-ggplot(Rawtrain, aes(x=as.factor(Survived),y=Age,color = as.factor(Survived))) +   geom_boxplot()
+p<-p+scale_color_manual(values=c("red", "green"))
+p<-p+xlab("Survived: 0 - No , 1 - Yes") + ylab("Age - Years")
+p<-p+labs(title=" Boxplot Of Survivals/Death -- Age")
+p
+```
+
+We can see that Age as a continuous feature/Predictor doesn't provide 
+good estimator for Surveillance instead we will have to split it to several 
+bins 
+During the feature engineering, we will check several options for the splitting thresholds.
+
+### (Passenger) Name
+In this part, we are doing some simple text analytics 
+Let's try to understand what  type of word the naming 
+feature can provide 
+The step we will take care 
+1.Build a corpus
+2. Tokenize (converting to tokens, words in this case ) 
+   Removing numbers, symbols  separators, punctuation and some 
+   another standard cleaning (though it is probably less needed here )
+3.Create Uni Grahm 
+4.Sort according to count (Frequency )
+```{r}
+#Create Corpus
+corp <- corpus(as.character(Rawtrain$Name))
+
+
+Text.Sentences <- tokens(
+  x = tolower(corp),
+  remove_punct = TRUE,
+  remove_twitter = TRUE,
+  remove_numbers = TRUE,
+  remove_hyphens = TRUE,
+  remove_symbols = TRUE,
+  remove_separators = TRUE,
+  remove_url = TRUE)
+
+
+##############################################
+# Create Uni Gram                            #
+#                                            #
+##############################################
+uni_DFM <- dfm(Text.Sentences)
+#Trim to Words with Priority higher than 2
+
+#Calculate the Col Sum 
+sums_U <- colSums(uni_DFM)
+
+
+#PAck in Data table 
+uni_words <- data.table(word_1 = names(sums_U), count = sums_U)
+
+#Sort 
+setorder(uni_words,-count)
+
+kable(head(uni_words,15)) %>%
+  kable_styling("striped", full_width = F) %>%
+  add_indent(c(1, 3, 5))
+
+```
+
+The most interesting results are 
+Mr, Miss, Mrs and Master (Master in the old days is a boy under 18)
+We can use this information for two purpose 
+
+1. There are 177 passengers that their age is missing, we can use this data to have a better technique to complete missing data (using mean according to the titles)
+2. We can use the information to create a feature  married or not a married woman
+
+Based on the results build a new column 
+Mr, Miss, Mrs or Master 
+
+```{r}
+
+
+#Use the Tokens Vector to build a title column
+Text<-sapply(Text.Sentences,as.character)
+regex <- 
+chkmr<-grepl(paste0(sprintf("(?=.*%s)", "mr"), collapse = ''), Text, perl = TRUE)
+chkmiss<-grepl(paste0(sprintf("(?=.*%s)", "miss"), collapse = ''), Text, perl = TRUE)
+chkmrs<-grepl(paste0(sprintf("(?=.*%s)", "mrs"), collapse = ''), Text, perl = TRUE)
+chkmaster<-grepl(paste0(sprintf("(?=.*%s)", "master"), collapse = ''), Text, perl = TRUE)
+
+Rawtrain<-Rawtrain%>%mutate(Title=ifelse(chkmrs,"Mrs",ifelse(chkmiss,"Miss",ifelse(chkmr,"Mr.",
+                                                                                  ifelse(chkmaster,"Master","None")))))
+                                         
+     
+  
+```
+
+
+Let's look at a summary after populating the title.
+
+```{r}
+kable(table(Rawtrain$Title)) %>%
+  kable_styling("striped", full_width = F) 
+```
+Let's look on the None title items 
+```{r}
+kable(filter(Rawtrain,Title =="None"))%>%
+  kable_styling("striped", full_width = F) 
+```
+
+
+It looks like we should add the following 
+1. Dr.  - For Doctors 
+2. Rev  - 
+3. Army - Majo. Col. Capt.
+4. Dona and Don will be treated as Mrs and Mr.
+
+```{r}
+
+chkdr<-grepl(paste0(sprintf("(?=.*%s)", "dr"), collapse = ''), Text, perl = TRUE)
+chkrev<-grepl(paste0(sprintf("(?=.*%s)", "rev"), collapse = ''), Text, perl = TRUE)
+chkArmy1<-grepl(paste0(sprintf("(?=.*%s)", "major"), collapse = ''), Text, perl = TRUE)
+chkArmy2<-grepl(paste0(sprintf("(?=.*%s)", "col"), collapse = ''), Text, perl = TRUE)
+chkArmy3<-grepl(paste0(sprintf("(?=.*%s)", "capt"), collapse = ''), Text, perl = TRUE)
+
+Rawtrain<-Rawtrain%>%
+  mutate(Title2=ifelse(chkdr ,"Dr.",ifelse(chkrev,"Rev.",ifelse(chkArmy1,"Army",ifelse(chkArmy2,"Army",                                                                                   ifelse(chkArmy3,"Army","None")))))) 
+
+chkdon<-grepl(paste0(sprintf("(?=.*%s)", "don"), collapse = ''), Text, perl = TRUE)
+chkdone<-grepl(paste0(sprintf("(?=.*%s)", "dona"), collapse = ''), Text, perl = TRUE)
+
+Rawtrain<-Rawtrain%>%
+  mutate(Title3=ifelse(chkdon ,"Mr.",ifelse(chkdone,"Mrs" ,"None")))                                              
+
+```
+
+
+Merging the three  titles 
+
+```{r}
+Rawtrain$Title[Rawtrain$Title == "None"] <- Rawtrain$Title2[Rawtrain$Title == "None"]
+Rawtrain$Title[Rawtrain$Title == "None"] <- Rawtrain$Title3[Rawtrain$Title == "None"]
+Rawtrain <- subset(Rawtrain, select = -c(Title2,Title3))
+```
+
+
+
+
+```{r}
+p<-ggplot(Rawtrain, aes((y =..count..),x=Title)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
+p<-p+xlab("Title") + ylab("Count")
+p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
+p<-p+labs(title=" Bar Plot Title -- Survived ")
+p
+```
+
+
+## Handling Title missing data 
+
+First, let's see with current data what is the data about Age per Title. 
+
+```{r}
+p<-ggplot(Rawtrain, aes(x=as.factor(Title),y=Age,color = as.factor(Title))) +   geom_boxplot()
+p<-p+xlab("Title") + ylab("Age - Years")
+p<-p+labs(title=" Boxplot Of Title -- Age ")
+p
+```
+
+Calculate Mean Median and SD  for Age per Title 
+
+```{r}
+TitlesOptions<-c("Mr.","Miss","Mrs","Master","Dr.","Army","Rev.")
+for (i in 1:length(TitlesOptions))
+{
+  df<-subset(Rawtrain,(Title==TitlesOptions[i]))
+  Mean<-mean(df$Age,na.rm=TRUE) 
+  Median<-median(df$Age,na.rm=TRUE)
+  Sdv<-sd(df$Age,na.rm=TRUE)
+  
+  n = dim((subset(Rawtrain,Title==TitlesOptions[i] & !is.na(Age))))[1]
+  Esdv <- sqrt(Sdv^2/n)
+  
+  if (i==1)
+    DFAgeStat<-data.frame("Title" = TitlesOptions[i],"Mean" = Mean , "Median" = Median , "Sdv" = Sdv , "Esdv" = Esdv  )
+  else
+  {
+    DF<-data.frame("Title" = TitlesOptions[i],"Mean" = Mean , "Median" = Median , "Sdv" = Sdv , "Esdv" = Esdv )
+    DFAgeStat<-rbind(DFAgeStat,DF)
+  }
+
+}
+
+#Show the statisticl results
+kable((DFAgeStat)) %>%
+  kable_styling("striped", full_width = F) 
+```
+
+
+
+```{r}
+
+SexOptions<-c("male","female")
+for (i in 1:length(SexOptions))
+{
+    df<-subset(Rawtrain,(Sex==SexOptions[i]))
+    Mean<-mean(df$Age,na.rm=TRUE) 
+    Median<-median(df$Age,na.rm=TRUE)
+    
+   
+    
+    Sdv<-sd(df$Age,na.rm=TRUE)
+    if (i==1)
+      DFSexStat<-data.frame("Sex" = SexOptions[i],"Mean" = Mean , "Median" = Median , "Sdv" = Sdv )
+    else
+    {
+      DF<-data.frame("Sex" = SexOptions[i],"Mean" = Mean , "Median" = Median , "Sdv" = Sdv )
+      DFSexStat<-rbind(DFSexStat,DF)
+    }
+}
+
+
+kable((DFSexStat)) %>%
+  kable_styling("striped", full_width = F) 
+
+DFAgeStat<-setDT(DFAgeStat)
+setkey(DFAgeStat,Title,Mean,Median,Sdv)
+```
+
+The logic will be: 
+If we have Title and missing age we will use the mean title to complete 
+If we have the age data  but no Title data  we can add the Title (based on age and sex)
+if we only have sex, we will use it to evaluate the age and title 
+
+Preparing three  approaches for later user 
+1. Use the mean 
+2. Use the median 
+3. Use Random normal distribution variable
+
+
+```{r}
+#Handle cases where Age is missing, but we have the Title data 
+
+#Loop creating the three options described above 
+TitlesOptions<-c("Mr.","Miss","Mrs","Master","Dr.","Army","Rev.")
+Rawtrain<-mutate(Rawtrain,AgeMean=Age)
+Rawtrain<-mutate(Rawtrain,AgeMedian=Age)
+Rawtrain<-mutate(Rawtrain,AgeNormal=Age)
+set.seed(444)
+for (i in 1:length(TitlesOptions))
+{
+  #Mean
+  Rawtrain$AgeMean[is.na(Rawtrain$Age) & Rawtrain$Title == TitlesOptions[i]]<- DFAgeStat[.(TitlesOptions[i])]$Mean
+  #Median
+  Rawtrain$AgeMedian[is.na(Rawtrain$Age) & Rawtrain$Title == TitlesOptions[i]]<- DFAgeStat[.(TitlesOptions[i])]$Median
+  #Normal Distrbution variable based on the Mean and SD 
+  
+  #Calculate the number of missing items 
+  n<-dim(subset(Rawtrain,is.na(Rawtrain$Age) & Rawtrain$Title == TitlesOptions[i]))[1]
+  #Create a Normal Random Variable with Mean  and SD^2/n  and sample according to n
+  Rawtrain$AgeNormal[is.na(Rawtrain$Age) & Rawtrain$Title == TitlesOptions[i]]<-
+    sample(rnorm(10000,DFAgeStat[.(TitlesOptions[i])]$Mean,DFAgeStat[.(TitlesOptions[i])]$Esdv),n)   
+  
+}
+  
+
+
+  
+
+```
+
+Finaly let's  compare the 4 new Age tables to verify the results 
+
+
+```{r fig.width=14, fig.height=12}
+#Plot the Original Age column (this time without the NA values)
+p1<-ggplot(subset(Rawtrain,!is.na(Age)), aes(x=as.factor(Title),
+                          y=Age,color = as.factor(Title))) +   geom_boxplot()
+p1<-p1+xlab("Title") + ylab("Age - Years")
+p1<-p1+labs(title=" Boxplot Of Title -- Age ")
+p1<-p1+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p1<-p1+theme(axis.text.x = element_text(size=12 ))
+p1<-p1+theme(axis.text.y = element_text(size=12 ))
+p1<-p1+ labs(col="Title")                          
+
+
+p2<-ggplot(Rawtrain, aes(x=as.factor(Title),y=AgeMean,color = as.factor(Title))) +   geom_boxplot()
+p2<-p2+xlab("Title") + ylab("Age  - Years")
+p2<-p2+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Mean  ")
+p2<-p2+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p2<-p2+theme(axis.text.x = element_text(size=12 ))
+p2<-p2+theme(axis.text.y = element_text(size=12 ))
+p2<-p2+ labs(col="Title")  
+
+
+p3<-ggplot(Rawtrain, aes(x=as.factor(Title),y=AgeMedian,color = as.factor(Title))) +   geom_boxplot()
+p3<-p3+xlab("Title") + ylab("Age  - Years")
+p3<-p3+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Median  ")
+p3<-p3+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p3<-p3+theme(axis.text.x = element_text(size=12 ))
+p3<-p3+theme(axis.text.y = element_text(size=12 ))
+p3<-p3+ labs(col="Title")  
+
+p4<-ggplot(Rawtrain, aes(x=as.factor(Title),y=AgeNormal,color = as.factor(Title))) +   geom_boxplot()
+p4<-p4+xlab("Title") + ylab("Age  - Years")
+p4<-p4+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Normal Random Variable  ")
+p4<-p4+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p4<-p4+theme(axis.text.x = element_text(size=12 ))
+p4<-p4+theme(axis.text.y = element_text(size=12 ))
+p4<-p4+ labs(col="Title")  
+
+
+
+
+grid.arrange(p1,p2,p3,p4,nrow =4)
+
+
+```
+
+
