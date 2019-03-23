@@ -102,6 +102,25 @@ Rawtrain<-Rawtrain %>%
 
 Age and Cabin has a relatively high amount of missing data.
 
+
+
+###Pclass 
+Pclass is a Factor or Categorical variable 
+
+
+```{r}
+p<-ggplot(Rawtrain, aes((y =..count..),x=Pclass)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
+p<-p+xlab("Pclass") + ylab("Count")
+p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
+p<-p+labs(title=" Bar Plot Pclass -- Survived ")
+p
+```
+
+There are three class types - 1, 2 and 3. 
+It Seems that in Class 3 you have less chance to survive 
+While in Class 1 you had a higher chance to survive 
+In Class 2 the odd are Equal 
+
 ### Sex
 
 The First Parameter We will review is the Sex.
