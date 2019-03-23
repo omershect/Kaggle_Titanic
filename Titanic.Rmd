@@ -109,6 +109,7 @@ Pclass is a Factor or Categorical variable
 
 
 ```{r}
+theme_update(plot.title = element_text(hjust = 0.5))
 p<-ggplot(Rawtrain, aes((y =..count..),x=Pclass)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
 p<-p+xlab("Pclass") + ylab("Count")
 p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
@@ -507,4 +508,51 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 
 ```
 
+
+
+### Fare
+
+Fare is a continues paramter
+
+
+
+```{r}
+p<-ggplot(Rawtrain,aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_density(alpha = 0.5)
+p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) ")
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p
+```
+
+
+```{r}
+p<-subset(Rawtrain,Fare<50)%>%
+  ggplot(aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_density(alpha = 0.5)
+p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) Fare < 50")
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p
+  
+```
+
+
+
+```{r}
+p<-subset(Rawtrain,Fare>50 & Fare<100)%>%
+  ggplot(aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_density(alpha = 0.5)
+p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) Fare Between 50 and 100")
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p
+```
+
+
+```{r}
+p<-subset(Rawtrain,Fare>100)%>%
+  ggplot(aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_density(alpha = 0.5)
+p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) Fare Above 100")
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p
+```
 
