@@ -35,11 +35,22 @@ Competition in Kaggle
 
 # Exploratory Data 
 
-## Loading the train set 
+## Loading the train and test sets 
 ```{r date load}
 setwd("E:/Elements/kaggle/Kaggle_Titanic")
 train<-read.csv("train.csv")
+test<-read.csv("test.csv")
+#Create Raw train, test and combined data
+#Combined data will be used to do common preprocessing  (test and train)
+#Though we will be careful not to allow a leak of a data 
+#from train to test data 
 Rawtrain<-train
+Rawtest<-test
+# To combine the train and test - 
+#create dummy Survived column (and then remove it)
+Rawtest['Survived']<-0
+RawData<-rbind(train,Rawtest)
+Rawtest<-subset(Rawtest,select = -Survived)
 
 ```
 
@@ -93,18 +104,31 @@ Rawtrain<-Rawtrain %>%
        mutate(Embarked = if_else(as.character(Embarked)=="", NA_character_ ,as.character(Embarked)))
 
 
+
+Rawtest<-Rawtest %>% 
+       mutate(Cabin = if_else(as.character(Cabin)=="", NA_character_ ,as.character(Cabin)))
+
+Rawtest<-Rawtest %>% 
+       mutate(Ticket = if_else(as.character(Ticket)=="", NA_character_ ,as.character(Ticket)))
+
+Rawtest<-Rawtest %>% 
+       mutate(Embarked = if_else(as.character(Embarked)=="", NA_character_ ,as.character(Embarked)))
+
+
+
 ```
 
 
 ```{r}
  inspect.na(Rawtrain, barplot=TRUE)
+ inspect.na(Rawtest, barplot=TRUE)
 ```
 
 Age and Cabin has a relatively high amount of missing data.
 
 
 
-###Pclass 
+##Pclass 
 Pclass is a Factor or Categorical variable 
 
 
@@ -131,11 +155,19 @@ Rawtrain<-Rawtrain%>%
 Rawtrain<-Rawtrain%>%
   mutate(Pclass3 = ifelse(Pclass==3,1,0))
 
+
+Rawtest<-Rawtest%>%
+  mutate(Pclass1 = ifelse(Pclass==1,1,0))
+Rawtest<-Rawtest%>%
+  mutate(Pclass3 = ifelse(Pclass==3,1,0))
+
 ```
 
 Verify that the dummy variables were created properly 
 
+### Pclass Train 
 ```{r}
+
 kable((table(Rawtrain$Pclass)) ,col.names = c("Pclass","Frequency"),escape = FALSE)%>%
   kable_styling(c("striped", "bordered"))
 
@@ -145,17 +177,30 @@ kable(table(Rawtrain$Pclass1),col.names = c("Pclass1 - 1 - Yes 0 - No ","Frequen
 
 kable(table(Rawtrain$Pclass3),col.names = c("Pclass3 - 1 - Yes 0 - No ","Frequency")) %>%
    kable_styling(c("striped", "bordered")) 
+
+```
+
+### Pclass Test
+```{r}
+kable((table(Rawtest$Pclass)) ,col.names = c("Pclass","Frequency"),escape = FALSE)%>%
+  kable_styling(c("striped", "bordered"))
+
+kable(table(Rawtest$Pclass1),col.names = c("Pclass1 - 1 - Yes 0 - No ","Frequency")) %>%
+   kable_styling(c("striped", "bordered"))
+
+
+kable(table(Rawtest$Pclass3),col.names = c("Pclass3 - 1 - Yes 0 - No ","Frequency")) %>%
+   kable_styling(c("striped", "bordered")) 
+
   
 ```
 
 
-### Sex
+## Sex
 
-The First Parameter We will review is the Sex.
+The First Parameter We will review is Sex.
 
 ```{r}
-
-
 
 
 p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived),fill=Sex))+geom_bar()
@@ -174,12 +219,12 @@ kable(table(Rawtrain$Sex),col.names = c("Sex","Frequency")) %>%
 ```
 
 Checking the Correlation 
-To check Correlation we create a Categorical variable 
+To check Correlation, we create a Categorical variable 
 1 - Female
 0 - Sex 
-
 ```{r}
 Rawtrain<-mutate(Rawtrain,Sexb=ifelse(Sex=="female",1,0))
+Rawtest<-mutate(Rawtest,Sexb=ifelse(Sex=="female",1,0))
 ggpairs(subset(Rawtrain,select=c("Survived", "Sexb")))
 ```
 
@@ -189,7 +234,7 @@ Conclusion :
 2. Sex looks like a good predictor/Feature to use 
 
 
-### Age 
+## Age 
 
 
 ```{r}
@@ -199,9 +244,8 @@ p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red"
 
 p
 ```
-
 Later we will use the Data from the Sex and names to complete the missing data. 
-Checking for outliers and another way to look at the relation between Age and survivals.
+Look for outliers and another way to look at the relation between Age and survivals.
 
 ```{r}
 p<-ggplot(Rawtrain, aes(x=as.factor(Survived),y=Age,color = as.factor(Survived))) +   geom_boxplot()
@@ -211,12 +255,11 @@ p<-p+labs(title=" Boxplot Of Survivals/Death -- Age")
 p
 ```
 
-We can see that Age as a continuous feature/Predictor doesn't provide 
-good estimator for Surveillance instead we will have to split it to several 
-bins 
-During the feature engineering, we will check several options for the splitting thresholds.
+We can see that Age as a continuous feature/Predictor there are points 
+it is a good predictor and some that it doesn't 
 
-### (Passenger) Name
+
+## (Passenger) Name
 In this part, we are doing some simple text analytics 
 Let's try to understand what  type of word the naming 
 feature can provide 
@@ -230,7 +273,7 @@ The step we will take care
 ```{r}
 #Create Corpus
 corp <- corpus(as.character(Rawtrain$Name))
-
+corp <- corpus(as.character(RawData$Name))
 
 Text.Sentences <- tokens(
   x = tolower(corp),
@@ -535,7 +578,7 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 
 ```
 
-### SibSp & Parch
+## SibSp & Parch
 
 Sibsp - Number of siblings / spouses aboard the Titanic
 Parch - Number of parents / children aboard the Titanic
@@ -544,8 +587,9 @@ Parch - Number of parents / children aboard the Titanic
 ```{r}
 p<-ggplot(Rawtrain,aes(x=as.factor(SibSp),group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
-p<-p+labs(title=" Bar Plot of Sibsp (Survived Vs. Death) ")
+p<-p+labs(title=" Bar Plot of Sibsp Vs. Survived  ")
 p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+xlab("Sibsp ") + ylab("Count")
 p
 ```
 
@@ -554,38 +598,60 @@ p
 ```{r}
 p<-ggplot(Rawtrain,aes(x=as.factor(Parch),group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
-p<-p+labs(title=" Bar Plot of Parch (Survived Vs. Death) ")
+p<-p+labs(title=" Bar Plot of Parch Vs. Survived ")
 p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+xlab("Parch ") + ylab("Count")
 p
 ```
 
-Let's try to build some categorical paaramters based on these two variables 
-Ans see the impact on Survived/Deate
 
-First - Is the pasaanger alone 
+Let's try to build some categorical parameters based on these two variables 
+Ans see the impact on Survived/Death
+
+First - Is the passengers alone 
 
 ```{r}
-Rawtrain<-Rawtrain%>%mutate(Isalone=ifelse((SibSp+Parch) >0,0,1))
+Rawtrain<-Rawtrain%>%mutate(Isalone=ifelse((SibSp+Parch) > 0,0,1))
 p<-ggplot(Rawtrain,aes(x=as.factor(Isalone),group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
-p<-p+labs(title=" Bar Plot of Isalone (Survived Vs. Death) ")
+p<-p+labs(title=" Bar Plot of Isalone  Vs. Survived ")
+p<-p+xlab("Is Alone 1 - Yes  0 - No ") + ylab("Count")
 p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
 p
 
+```
+
+
+Create a column with the total number of people in the group
+
+```{r}
+Rawtrain<-Rawtrain%>%mutate(GroupNo=SibSp+Parch)
+p<-ggplot(Rawtrain,aes(x=as.factor(GroupNo),group=as.factor(Survived),fill=as.factor(Survived)))+
+  geom_bar()
+p<-p+labs(title=" Bar Plot of Group size  Vs. Survived  ")
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p
+
+```
+
+
+It looks like a group of 4 and above has less chance to survive. 
+
+```{r}
+Rawtrain<-Rawtrain%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
 ```
 
 
 ## Ticket
-Ticket observations are comprised of a set of characters (or nothing)
-and then numbers 
-First building two new columns, one will have the characters and the other the numbers
+Ticket observations contain  a set of characters (or nothing)  and then numbers 
+The first step clean the ticket observations and create a column with only the character set (the of the ticket's number  will have no meaning probably)
 
 ```{r}
-#Create a new colomn with Tickets which don't start with Numbers 
+#Create a new column with Tickets which don't start with Numbers 
 Rawtrain<-Rawtrain%>%
   mutate(TicketChar = ifelse(grepl("^[0-9]",Ticket),"N",Ticket))
 #Remove all the digits 
-#(Since the characters may have digits also we remove when there is occuarance of 3 or more )
+#(Since the characters may have numbers also we remove when there is any occurrence of three or more )
 Rawtrain$TicketChar<-gsub("[0-9]{3,}"," ",Rawtrain$TicketChar)
 ```
 
@@ -600,7 +666,7 @@ p
 
 
 
-### Fare
+## Fare
 
 Fare is a continues paramter
 
@@ -648,7 +714,7 @@ p
 
 
 
-### Embarked
+## Embarked
 
 Embarked - Port of Embarkation (C = Cherbourg; Q = Queenstown; S = Southampton)
 
