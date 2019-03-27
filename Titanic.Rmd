@@ -27,6 +27,7 @@ library(GGally)
 library(varhandle)
 library(gridExtra)
 library(stringr)
+library(fastDummies)
 ```
 
 # Titanic: Machine Learning from Disaster
@@ -770,6 +771,9 @@ The first step clean the ticket observations and create a column with only the c
 RawData<-RawData%>%
 mutate(TicketChar = gsub("[0-9]{3,}","",Ticket))
 
+#Mark all empty Ticket Char by U 
+RawData$TicketChar<-ifelse(RawData$TicketChar=="","U",RawData$TicketChar)
+
 #Create anothher colomn with the numbers
 RawData<-RawData%>%
 mutate(TicketNumbers = strtoi(str_extract(Ticket,"[0-9]{3,}")))
@@ -792,6 +796,13 @@ p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red"
 p
 ```
 
+Create Dummy variables for the ticket char 
+```{r}
+Rawtrain<-cbind(Rawtrain,dummy_cols(Rawtrain$TicketChar))
+Rawtest<-cbind(Rawtest,dummy_cols(Rawtest$TicketChar))
+#Rawtest<-dummy_cols(Rawtest$TicketChar)
+
+```
 
 
 ## Fare
