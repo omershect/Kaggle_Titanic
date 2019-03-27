@@ -414,7 +414,7 @@ p
 ```
 
 
-## Handling Title missing data 
+## Handling Title missing data using Age And Sex 
 
 First, let's see with current data what is the data about Age per Title. 
 
@@ -495,9 +495,15 @@ Preparing three  approaches for later user
 2. Use the median 
 3. Use Random normal distribution variable
 
+Since this is like building a small model, we will use them 
+Mean Median and the Random variables that is computes using the train data 
+and complete the data using the model for both the test and the train sets 
+
+## Complete Missing Age 
 
 ```{r}
 #Handle cases where Age is missing, but we have the Title data 
+# The 
 
 #Loop creating the three options described above 
 TitlesOptions<-c("Mr.","Miss","Mrs","Master","Dr.","Army","Rev.")
@@ -520,16 +526,36 @@ for (i in 1:length(TitlesOptions))
     sample(rnorm(10000,DFAgeStat[.(TitlesOptions[i])]$Mean,DFAgeStat[.(TitlesOptions[i])]$Esdv),n)   
   
 }
+
+#Repeat the same process over the test set 
+Rawtest<-mutate(Rawtest,AgeMean=Age)
+Rawtest<-mutate(Rawtest,AgeMedian=Age)
+Rawtest<-mutate(Rawtest,AgeNormal=Age)
+set.seed(444)
+for (i in 1:length(TitlesOptions))
+{
+  #Mean
+  Rawtest$AgeMean[is.na(Rawtest$Age) & Rawtest$Title == TitlesOptions[i]]<- DFAgeStat[.(TitlesOptions[i])]$Mean
+  #Median
+  Rawtest$AgeMedian[is.na(Rawtest$Age) & Rawtest$Title == TitlesOptions[i]]<- DFAgeStat[.(TitlesOptions[i])]$Median
+  #Normal Distrbution variable based on the Mean and SD 
   
+  #Calculate the number of missing items 
+  n<-dim(subset(Rawtest,is.na(Rawtest$Age) & Rawtest$Title == TitlesOptions[i]))[1]
+  #Create a Normal Random Variable with Mean  and SD^2/n  and sample according to n
+  Rawtest$AgeNormal[is.na(Rawtest$Age) & Rawtest$Title == TitlesOptions[i]]<-
+    sample(rnorm(10000,DFAgeStat[.(TitlesOptions[i])]$Mean,DFAgeStat[.(TitlesOptions[i])]$Esdv),n)   
+  
+} 
 
 
   
 
 ```
 
-Finaly let's  compare the 4 new Age tables to verify the results 
+Finaly let's  compare the 4 new Age tables to verify the results (Train set)
 
-
+### Age Versus Titles - Train 
 ```{r fig.width=14, fig.height=14}
 #Plot the Original Age column (this time without the NA values)
 p1<-ggplot(subset(Rawtrain,!is.na(Age)), aes(x=as.factor(Title),
@@ -595,6 +621,75 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 
 ```
 
+
+### Age Versus Titles - Test 
+```{r fig.width=14, fig.height=14}
+#Plot the Original Age column (this time without the NA values)
+p1<-ggplot(subset(Rawtest,!is.na(Age)), aes(x=as.factor(Title),
+                          y=Age,color = as.factor(Title))) +   geom_boxplot()
+p1<-p1+xlab("Title") + ylab("Age - Years")
+p1<-p1+labs(title=" Boxplot Of Title -- Age ")
+p1<-p1+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p1<-p1+theme(axis.text.x = element_text(size=12 ))
+p1<-p1+theme(axis.text.y = element_text(size=12 ))
+p1<-p1+ labs(col="Title")                          
+
+
+p2<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeMean,color = as.factor(Title))) +   geom_boxplot()
+p2<-p2+xlab("Title") + ylab("Age  - Years")
+p2<-p2+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Mean  ")
+p2<-p2+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p2<-p2+theme(axis.text.x = element_text(size=12 ))
+p2<-p2+theme(axis.text.y = element_text(size=12 ))
+p2<-p2+ labs(col="Title")  
+
+
+p3<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeMedian,color = as.factor(Title))) +   geom_boxplot()
+p3<-p3+xlab("Title") + ylab("Age  - Years")
+p3<-p3+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Median  ")
+p3<-p3+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p3<-p3+theme(axis.text.x = element_text(size=12 ))
+p3<-p3+theme(axis.text.y = element_text(size=12 ))
+p3<-p3+ labs(col="Title")  
+
+p4<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeNormal,color = as.factor(Title))) +   geom_boxplot()
+p4<-p4+xlab("Title") + ylab("Age  - Years")
+p4<-p4+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Normal Random Variable  ")
+p4<-p4+theme(axis.title.x = element_text(size = rel(1.2)),
+             axis.title.y = element_text(size = rel(1.2)),
+        legend.text = element_text(size = rel(1.2)),
+         axis.text.x.top =  element_text(size = rel(1.2)),
+        legend.title = element_text(size = rel(1.2)))
+
+p4<-p4+theme(axis.text.x = element_text(size=12 ))
+p4<-p4+theme(axis.text.y = element_text(size=12 ))
+p4<-p4+ labs(col="Title")  
+
+
+
+
+grid.arrange(p1,p2,p3,p4,nrow =4)
+
+
+```
+
+
+
 ## SibSp & Parch
 
 Sibsp - Number of siblings / spouses aboard the Titanic
@@ -629,6 +724,8 @@ First - Is the passengers alone
 
 ```{r}
 Rawtrain<-Rawtrain%>%mutate(Isalone=ifelse((SibSp+Parch) > 0,0,1))
+Rawtest<-Rawtest%>%mutate(Isalone=ifelse((SibSp+Parch) > 0,0,1))
+
 p<-ggplot(Rawtrain,aes(x=as.factor(Isalone),group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Isalone  Vs. Survived ")
@@ -643,6 +740,7 @@ Create a column with the total number of people in the group
 
 ```{r}
 Rawtrain<-Rawtrain%>%mutate(GroupNo=SibSp+Parch)
+Rawtest<-Rawtest%>%mutate(GroupNo=SibSp+Parch)
 p<-ggplot(Rawtrain,aes(x=as.factor(GroupNo),group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Group size  Vs. Survived  ")
@@ -656,6 +754,8 @@ It looks like a group of 4 and above has less chance to survive.
 
 ```{r}
 Rawtrain<-Rawtrain%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
+Rawtest<-Rawtest%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
+
 ```
 
 
@@ -820,6 +920,15 @@ Rawtrain<-Rawtrain%>%
   mutate(AgeMedian_Nor=normalize(AgeMedian))
 
 Rawtrain<-Rawtrain%>%
+  mutate(AgeNormal_Nor=normalize(AgeNormal))
+
+Rawtest<-Rawtest%>%
+  mutate(AgeMean_Nor=normalize(AgeMean))
+
+Rawtest<-Rawtest%>%
+  mutate(AgeMedian_Nor=normalize(AgeMedian))
+
+Rawtest<-Rawtest%>%
   mutate(AgeNormal_Nor=normalize(AgeNormal))
 
 ```
