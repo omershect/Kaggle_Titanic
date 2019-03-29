@@ -798,8 +798,11 @@ res<-((RawData%>%filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all
 RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketChar<-res
 RawData$TicketChar<-as.character(RawData$TicketChar)
 
-#Handle the cases that there are no doigits 
-
+#Handle the cases that there are no digits 
+res<-as.character(subset(RawData,grepl("^[A-Za-z]+$",Ticket,perl=T))$Ticket)
+RawData[grep("^[A-Za-z]+$",RawData$Ticket,perl=T),]$TicketChar<-res
+#Set number 1 to the Ticketnumbers 
+RawData[is.na(RawData$TicketNumbers),]$TicketNumbers<-1
 
 #Copy the Ticekt new columnsr to the train and test sets 
 Rawtrain[,c("TicketChar","TicketNumbers")]<-RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers")]
