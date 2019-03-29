@@ -28,6 +28,9 @@ library(varhandle)
 library(gridExtra)
 library(stringr)
 library(fastDummies)
+library(caret)
+library(randomForest)
+library(rpart)
 ```
 
 # Titanic: Machine Learning from Disaster
@@ -768,8 +771,10 @@ The first step clean the ticket observations and create a column with only the c
 
 #Remove all the digits 
 #(Since the characters may have numbers also we remove when there is any occurrence of three or more )
+
 RawData<-RawData%>%
 mutate(TicketChar = gsub("[0-9]{3,}","",Ticket))
+
 
 #Mark all empty Ticket Char by U 
 RawData$TicketChar<-ifelse(RawData$TicketChar=="","U",RawData$TicketChar)
@@ -777,6 +782,23 @@ RawData$TicketChar<-ifelse(RawData$TicketChar=="","U",RawData$TicketChar)
 #Create anothher colomn with the numbers
 RawData<-RawData%>%
 mutate(TicketNumbers = strtoi(str_extract(Ticket,"[0-9]{3,}")))
+
+
+#In the majority of the data the above condition (3 digits or above in a row )
+#is Enough, There are few other cases where there are only characters, or there is one digit 
+#Handle these cases 
+#Extract the Digits and place them in the TicketNumbers
+res<-as.numeric((RawData%>%filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all(" [0-9]{1}$"))
+RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketNumbers<-res
+#make sure that all values are numerics 
+RawData$TicketNumbers<-as.numeric(RawData$TicketNumbers)
+
+#Extract the Character part to TicketChar
+res<-((RawData%>%filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all("[^0-9 ]{1,}"))
+RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketChar<-res
+RawData$TicketChar<-as.character(RawData$TicketChar)
+
+#Handle the cases that there are no doigits 
 
 
 #Copy the Ticekt new columnsr to the train and test sets 
@@ -798,9 +820,13 @@ p
 
 Create Dummy variables for the ticket char 
 ```{r}
-Rawtrain<-cbind(Rawtrain,dummy_cols(Rawtrain$TicketChar))
-Rawtest<-cbind(Rawtest,dummy_cols(Rawtest$TicketChar))
-#Rawtest<-dummy_cols(Rawtest$TicketChar)
+
+RawData<-cbind(RawData,dummy_cols(RawData$TicketChar))
+Dummy_Col_Names<-colnames(RawData)[grepl("^.data_",colnames(RawData))]
+Rawtrain[,Dummy_Col_Names]<-RawData[1:nrow(Rawtrain),Dummy_Col_Names]
+test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
+Rawtest[,Dummy_Col_Names]<-RawData[test.index,Dummy_Col_Names]
+
 
 ```
 
@@ -901,14 +927,6 @@ p
 ```
 
 
-We will try to build a machine learning algorithm to predict 
-The cabin based on : 
-1.Ticket
-2.Fare
-3.Pclass
-
-
-
 
 ## Normalize (Age, Fare and Ticket Number)
 
@@ -943,3 +961,68 @@ Rawtest<-Rawtest%>%
   mutate(AgeNormal_Nor=normalize(AgeNormal))
 
 ```
+
+## Handling cabin missing data 
+
+We will try to build a machine learning algorithm to predict 
+The cabin based on : 
+1.Ticket
+2.Fare
+3.Pclass
+We will train the model on the train set (using existing cabin data)
+test it on the test set (using existing data), and then predict the 
+missing data in train and test set
+
+```{r}
+#Select only the relevant columns 
+# Fare, Ticket numbers, P-class Dummy Variables, Ticket characters dummy variables 
+# and Cabin character
+
+
+train_cabin<-Rawtrain[,c(10,13,14,24,25:79)] 
+#train_cabin<-Rawtrain[,c(10,13,14,23,24,79)]
+train_cabin<-subset(train_cabin,is.na(Cabin_Charcter)==FALSE)
+train_cabin$Cabin_Charcter<-as.factor(train_cabin$Cabin_Charcter)
+
+test_cabin<-Rawtest[,c(9,12,13,22,23,24:78)] 
+#test_cabin<-Rawtest[,c(9,12,13,22,23,78)]
+test_cabin<-subset(test_cabin,is.na(Cabin_Charcter)==FALSE)
+test_cabin$Cabin_Charcter<-as.factor(test_cabin$Cabin_Charcter)
+
+
+
+
+```
+
+
+
+set.seed(12345)
+# Training with classification tree
+tree.model1 <- rpart(as.factor(Cabin_Charcter) ~ ., data=train_cabin, method="class", xval = 5,na.action = na.rpart)
+plot(tree.model1,uniform=TRUE)
+text(tree.model1,cex=0.75)
+
+predictions1 <- predict(tree.model1 , train_cabin, type = "class")
+confusionMatrix(predictions1, train_cabin$Cabin_Charcter)
+
+predictions2 <- predict(tree.model1 , newdata = test_cabin, type = "class",na.action = na.rpart)
+confusionMatrix(predictions2, test_cabin$Cabin_Charcter)
+ 
+
+
+
+
+ 
+set.seed(12345)
+# Training with Random forest model
+modfit.rf <- randomForest(Cabin_Charcter ~ Fare+Pclass1+Pclass3+TicketNumbers , data=(subset(train_cabin,(is.na(train_cabin$TicketNumbers)==FALSE))))
+
+predictions1 <- predict(modfit.rf, (subset(train_cabin,(is.na(train_cabin$TicketNumbers)==FALSE))), type = "class")
+
+# Predict the testing set with the trained model
+predictions3 <- predict(modfit.rf, test_cabin, type = "class")
+
+# Accuracy and other metrics
+confusionMatrix(predictions3, test_cabin$Cabin_Charcter)
+ 
+
