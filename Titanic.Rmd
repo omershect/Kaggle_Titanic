@@ -693,6 +693,26 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 ```
 
 
+### Completing Missing titles 
+We can complete the missing titles based on Age and Sex 
+We will choose either Mr., Mrs. Miss or Master  
+
+```{r}
+#Subset the missing titles 
+res<-Rawtrain[Rawtrain$Title=="None",]
+
+#Complate based on the following
+#Male < 18 - Master
+#Female <28 - Miss
+#Female >=8 Mrs.
+#Male >18 Mr.
+Rawtrain[Rawtrain$Title=="None",]$Title<-ifelse(res$Age<18 & res$Sex=="male","Master",ifelse(res$Age<28 &   
+                        res$Sex=="female","Miss",ifelse(res$Sex=="female" & res$Age>=28,"Mrs","Mr.")))
+
+Rawtest[Rawtest$Title=="None",]
+```
+
+No missing data for Test set 
 
 ## SibSp & Parch
 
