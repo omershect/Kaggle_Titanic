@@ -140,11 +140,8 @@ Rawtest<-Rawtest %>%
 
 Age and Cabin has a relatively high amount of missing data.
 
-
-
 ##Pclass 
 Pclass is a Factor or Categorical variable 
-
 
 ```{r}
 theme_update(plot.title = element_text(hjust = 0.5))
@@ -234,8 +231,6 @@ p
 
 We can see that Age as a continuous feature/Predictor there are points 
 it is a good predictor and some that it doesn't 
-
-
 
 
 
@@ -368,8 +363,6 @@ Rawtrain[,"Title"]<-RawData[1:nrow(Rawtrain),"Title"]
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
 Rawtest[,"Title"]<-RawData[test.index,]$Title
 ```
-
-
 
 
 ```{r}
@@ -780,6 +773,13 @@ RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketNumbers<-res
 #make sure that all values are numerics 
 RawData$TicketNumbers<-as.numeric(RawData$TicketNumbers)
 
+#Set number 100 to the Ticketnumbers 
+RawData[is.na(RawData$TicketNumbers),]$TicketNumbers<-as.integer(mean(RawData$TicketNumbers,na.rm = TRUE))
+
+
+#Create A normlize TicketNumbers 
+RawData<-RawData%>%mutate(TicketNumbers_Nor =normalize(TicketNumbers))
+
 #Extract the Character part to TicketChar
 res<-((RawData%>%filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all("[^0-9 ]{1,}"))
 RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketChar<-res
@@ -788,13 +788,11 @@ RawData$TicketChar<-as.character(RawData$TicketChar)
 #Handle the cases that there are no digits 
 res<-as.character(subset(RawData,grepl("^[A-Za-z]+$",Ticket,perl=T))$Ticket)
 RawData[grep("^[A-Za-z]+$",RawData$Ticket,perl=T),]$TicketChar<-res
-#Set number 1 to the Ticketnumbers 
-RawData[is.na(RawData$TicketNumbers),]$TicketNumbers<-1
 
 #Copy the Ticekt new columnsr to the train and test sets 
-Rawtrain[,c("TicketChar","TicketNumbers")]<-RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers")]
+Rawtrain[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
-Rawtest[,c("TicketChar","TicketNumbers")]<-RawData[test.index,c("TicketChar","TicketNumbers")]
+Rawtest[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[test.index,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
 ```
 
 We need to verify that in the Test set there are no 
@@ -835,10 +833,6 @@ Rawtest$TicketChar<-df[test.index,]$TicketChar
 ```
 
 
-```{r}
-
-```
-
 
 ```{r fig.width=14, fig.height=10}
 p<-ggplot(subset(Rawtrain,TicketChar!=""),aes(x=as.factor(TicketChar),group=as.factor(Survived),fill=as.factor(Survived)))+
@@ -850,9 +844,9 @@ p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red"
 p
 ```
 
-Create Dummy variables for the ticket char 
-```{r}
 
+```{r}
+#Create Dummy variables for the ticket char 
 #RawData<-cbind(RawData,dummy_cols(RawData$TicketChar))
 #Dummy_Col_Names<-colnames(RawData)[grepl("^.data_",colnames(RawData))]
 #Rawtrain[,Dummy_Col_Names]<-RawData[1:nrow(Rawtrain),Dummy_Col_Names]
@@ -924,9 +918,23 @@ p
 ```
 
 ```{r}
+#There are two missing values 
+#Assign U to these values 
+RawData$Embarked<-as.character(RawData$Embarked)
+
+if (sum(RawData$Embarked=="")>0)
+  RawData[RawData$Embarked=="",]$Embarked<-"U"
+
+RawData$Embarked<-as.factor(RawData$Embarked)
+
+
+Rawtrain$Embarked<-RawData[1:nrow(Rawtrain),]$Embarked
+test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
+Rawtest$Embarked<-RawData[test.index,]$Embarked
+
 #Convert to Factor
-Rawtest$Embarked<-as.factor(Rawtest$Embarked)
-Rawtrain$Embarked<-as.factor(Rawtrain$Embarked)
+#Rawtest$Embarked<-as.factor(Rawtest$Embarked)
+#Rawtrain$Embarked<-as.factor(Rawtrain$Embarked)
 ```
 
 
@@ -1005,3 +1013,36 @@ Rawtest<-Rawtest%>%
   mutate(AgeNormal_Nor=normalize(AgeNormal))
 
 ```
+
+
+```{r}
+Rawtrain$Survived<-as.factor(Rawtrain$Survived)
+```
+
+
+
+# Models
+
+##Logoistic Regression 
+
+```{r}
+train1<-select(Rawtrain,Survived,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,AgeMedian_Nor)
+```
+
+
+```{r}
+train_control <- trainControl(method = "cv", number = 5)
+set.seed(12345)
+#train the model on training set
+model.lg1 <- train(Survived ~ Sex+Fare+GroupNo+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title,
+               data = train1,
+                method = "glm",
+               trControl =  train_control,
+               family = binomial(link = "logit"))
+
+# print cv scores
+summary(model.lg1)
+model.lg1
+
+```
+
