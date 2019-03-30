@@ -161,53 +161,16 @@ While in Class 1 you had a higher chance to survive
 In Class 2 the odd are Equal 
 
 
-Create Two dummy variables 
+Convert the Pclass to Factor variable
 
 ```{r}
-Rawtrain<-Rawtrain%>%
-  mutate(Pclass1 = ifelse(Pclass==1,1,0))
-Rawtrain<-Rawtrain%>%
-  mutate(Pclass3 = ifelse(Pclass==3,1,0))
 
-
-Rawtest<-Rawtest%>%
-  mutate(Pclass1 = ifelse(Pclass==1,1,0))
-Rawtest<-Rawtest%>%
-  mutate(Pclass3 = ifelse(Pclass==3,1,0))
+#Convert to a factor
+Rawtest$Pclass<-as.factor(Rawtest$Pclass)
+Rawtrain$Pclass<-as.factor(Rawtrain$Pclass)
 
 ```
 
-Verify that the dummy variables were created properly 
-
-### Pclass Train 
-```{r}
-
-kable((table(Rawtrain$Pclass)) ,col.names = c("Pclass","Frequency"),escape = FALSE)%>%
-  kable_styling(c("striped", "bordered"))
-
-kable(table(Rawtrain$Pclass1),col.names = c("Pclass1 - 1 - Yes 0 - No ","Frequency")) %>%
-   kable_styling(c("striped", "bordered"))
-
-
-kable(table(Rawtrain$Pclass3),col.names = c("Pclass3 - 1 - Yes 0 - No ","Frequency")) %>%
-   kable_styling(c("striped", "bordered")) 
-
-```
-
-### Pclass Test
-```{r}
-kable((table(Rawtest$Pclass)) ,col.names = c("Pclass","Frequency"),escape = FALSE)%>%
-  kable_styling(c("striped", "bordered"))
-
-kable(table(Rawtest$Pclass1),col.names = c("Pclass1 - 1 - Yes 0 - No ","Frequency")) %>%
-   kable_styling(c("striped", "bordered"))
-
-
-kable(table(Rawtest$Pclass3),col.names = c("Pclass3 - 1 - Yes 0 - No ","Frequency")) %>%
-   kable_styling(c("striped", "bordered")) 
-
-  
-```
 
 
 ## Sex
@@ -693,8 +656,8 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 ```
 
 
-### Completing Missing titles 
-We can complete the missing titles based on Age and Sex 
+### Complete Missing titles 
+We can complete the missing titles  data based on Age and Sex 
 We will choose either Mr., Mrs. Miss or Master  
 
 ```{r}
@@ -710,6 +673,10 @@ Rawtrain[Rawtrain$Title=="None",]$Title<-ifelse(res$Age<18 & res$Sex=="male","Ma
                         res$Sex=="female","Miss",ifelse(res$Sex=="female" & res$Age>=28,"Mrs","Mr.")))
 
 Rawtest[Rawtest$Title=="None",]
+
+#Convert to Factors 
+Rawtrain$Title<-as.factor(Rawtrain$Title)
+Rawtest$Title<-as.factor(Rawtest$Title)
 ```
 
 No missing data for Test set 
@@ -956,6 +923,12 @@ p<-p+labs(title=" Bar Plot Embarked -- Survived ")
 p
 ```
 
+```{r}
+#Convert to Factor
+Rawtest$Embarked<-as.factor(Rawtest$Embarked)
+Rawtrain$Embarked<-as.factor(Rawtrain$Embarked)
+```
+
 
 ## Cabin
 The cabin data  has a high percentage of missing data 
@@ -969,11 +942,17 @@ RawData<-RawData%>%
   mutate(Cabin_Charcter = str_extract(Cabin,"[A-Za-z][0-9]"))
 
 RawData$Cabin_Charcter<-str_extract(RawData$Cabin_Charcter,"^[A-Za-z]")
+#Mark all missing cabin character as U 
+RawData[is.na(RawData$Cabin_Charcter),]$Cabin_Charcter<-"U"
+
+#Convert to Factor 
+RawData$Cabin_Charcter<-as.factor(RawData$Cabin_Charcter)
 
 #Copy the Cabin Character to the train and test sets 
 Rawtrain[,"Cabin_Charcter"]<-RawData[1:nrow(Rawtrain),"Cabin_Charcter"]
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
 Rawtest[,"Cabin_Charcter"]<-RawData[test.index,]$Cabin_Charcter 
+
   
   
 ```
@@ -1026,105 +1005,3 @@ Rawtest<-Rawtest%>%
   mutate(AgeNormal_Nor=normalize(AgeNormal))
 
 ```
-
-## Handling cabin missing data 
-
-We will try to build a machine learning algorithm to predict 
-The cabin based on : 
-1.Ticket
-2.Fare
-3.Pclass
-We will train the model on the train set (using existing cabin data)
-test it on the test set (using existing data), and then predict the 
-missing data in train and test set
-
-
-```{r}
-
-
-#Select only the relevant columns 
-# Fare, Ticket numbers, P-class Dummy Variables, Ticket characters dummy variables 
-# and Cabin character
-
-
-
-#train_cabin<-Rawtrain[,c(10,13,14,23,24,25:79)] 
-train_cabin<-Rawtrain[,c(10,13,14,23,24,25)]
-train_cabin<-subset(train_cabin,is.na(Cabin_Charcter)==FALSE)
-train_cabin$Cabin_Charcter<-as.factor(train_cabin$Cabin_Charcter)
-
-
-#test_cabin<-Rawtest[,c(9,12,13,22,22,23,24:78)] 
-test_cabin<-Rawtest[,c(9,12,13,22,23,24)]
-test_cabin<-subset(test_cabin,is.na(Cabin_Charcter)==FALSE)
-test_cabin$Cabin_Charcter<-as.factor(test_cabin$Cabin_Charcter)
-
-
-#Create a Match matrix 
-TrainTicketchr<-sort(unique(train_cabin$TicketChar))
-TestTicketchr<-sort(unique(test_cabin$TicketChar))
-
-MatchTicketChar<-match(TestTicketchr,TrainTicketchr)
-#Checkk all NA in the test set 
-Missing_Items<-TestTicketchr[which(is.na(MatchTicketChar))]
-
-#Check how many items we are missing 
-count<-0
-for(i in 1:length(Missing_Items))
-{
-  count<-count + dim(test_cabin[test_cabin$TicketChar==Missing_Items[i],])[1]
-  #Change the Missing Test items to U
-  test_cabin[test_cabin$TicketChar==Missing_Items[i],]$TicketChar<-"U"
-  
-}
-cat("Missing items",count)
-
-df<-rbind(train_cabin,test_cabin)
-df$TicketChar<-as.factor(df$TicketChar)
-
-train_cabin$TicketChar<-df[1:nrow(train_cabin),]$TicketChar
-test.index<-(nrow(train_cabin)+1):(nrow(train_cabin)+nrow(test_cabin))
-test_cabin$TicketChar<-df[test.index,]$TicketChar
-
-```
-
-
-
-
-set.seed(12345)
-# Training with classification tree
-tree.model1 <- rpart(as.factor(Cabin_Charcter) ~ ., data=train_cabin, method="class", xval = 5,na.action = na.rpart)
-plot(tree.model1,uniform=TRUE)
-text(tree.model1,cex=0.75)
-
-predictions1 <- predict(tree.model1 , train_cabin, type = "class")
-confusionMatrix(predictions1, train_cabin$Cabin_Charcter)
-
-predictions2 <- predict(tree.model1 , newdata = test_cabin, type = "class",na.action = na.rpart)
-confusionMatrix(predictions2, test_cabin$Cabin_Charcter)
- 
-
-
-
-
-
-
- 
-set.seed(12345)
-# Training with Random forest model
-modfit.rf <- randomForest(Cabin_Charcter ~ Fare+Pclass1+Pclass3+TicketNumbers+(TicketChar) , data=train_cabin)
-
-# Predict the testing set with the trained model
-predictions1 <- predict(modfit.rf, train_cabin, type = "class")
-
-# Accuracy and other metrics
-confusionMatrix(predictions1, train_cabin$Cabin_Charcter)
- 
-
-# Predict the testing set with the trained model
-predictions3 <- predict(modfit.rf, test_cabin, type = "class")
-
-# Accuracy and other metrics
-confusionMatrix(predictions3, test_cabin$Cabin_Charcter)
- 
-
