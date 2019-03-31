@@ -27,10 +27,13 @@ library(GGally)
 library(varhandle)
 library(gridExtra)
 library(stringr)
-library(fastDummies)
 library(caret)
 library(randomForest)
 library(rpart)
+library(leaps)
+library(dummies)
+library(glmnet)
+library(boot)
 ```
 
 # Titanic: Machine Learning from Disaster
@@ -789,7 +792,7 @@ RawData$TicketChar<-as.character(RawData$TicketChar)
 res<-as.character(subset(RawData,grepl("^[A-Za-z]+$",Ticket,perl=T))$Ticket)
 RawData[grep("^[A-Za-z]+$",RawData$Ticket,perl=T),]$TicketChar<-res
 
-#Copy the Ticekt new columnsr to the train and test sets 
+#Copy the Ticket new columns to the train and test sets
 Rawtrain[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
 Rawtest[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[test.index,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
@@ -860,7 +863,16 @@ p
 ## Fare
 
 Fare is a continues paramter
+There is one observation  missing
+```{r}
+if (sum(is.na(RawData$Fare))>0)
+  RawData[is.na(RawData$Fare),]$Fare<-mean(RawData$Fare,na.rm = TRUE)
+Rawtrain[,c("Fare")]<-RawData[1:nrow(Rawtrain),c("Fare")]
+test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
+Rawtest[,c("Fare")]<-RawData[test.index,c("Fare")]
 
+
+```
 
 
 ```{r}
@@ -980,7 +992,7 @@ p
 
 
 
-## Normalize (Age, Fare and Ticket Number)
+## Normalize (Age, and Ticket Number)
 
 Some of the Machine learning algorithms can leverage
 normalize values (for the continuous observations)
@@ -989,9 +1001,16 @@ We will create normlize colomns for
 2. Ticket Number
 3. The various Age options (Mean,Median and RV)
 ```{r}
-RawData<-RawData%>%
+Rawtrain<-Rawtrain%>%
   mutate(Fare_Nor=normalize(Fare))
-RawData<-RawData%>%
+
+Rawtest<-Rawtest%>%
+  mutate(Fare_Nor=normalize(Fare))
+
+Rawtrain<-Rawtrain%>%
+  mutate(TicketNumbers_Nor=normalize(TicketNumbers))
+
+Rawtest<-Rawtest%>%
   mutate(TicketNumbers_Nor=normalize(TicketNumbers))
 
 Rawtrain<-Rawtrain%>%
@@ -1012,6 +1031,13 @@ Rawtest<-Rawtest%>%
 Rawtest<-Rawtest%>%
   mutate(AgeNormal_Nor=normalize(AgeNormal))
 
+
+Rawtrain<-Rawtrain%>%
+  mutate(GroupNo_Nor=normalize(GroupNo))
+
+Rawtest<-Rawtest%>%
+  mutate(GroupNo_Nor=normalize(GroupNo))
+
 ```
 
 
@@ -1020,29 +1046,155 @@ Rawtrain$Survived<-as.factor(Rawtrain$Survived)
 ```
 
 
+## Dummy variables 
+Some models can not handle factor variables with more than 3 levels 
+Creating dummy variable
+
+```{r}
+Pclass_Dummy<-data.frame(dummy(Rawtrain$Pclass))
+Dummytrain<-Pclass_Dummy
+
+Pclass_DummyT<-data.frame(dummy(Rawtest$Pclass))
+Dummytest<-Pclass_DummyT
+
+Title_Dummy<-data.frame(dummy(Rawtrain$Title))
+Dummytrain<-cbind(Dummytrain,Title_Dummy)
+
+Title_DummyT<-data.frame(dummy(Rawtest$Title))
+Dummytest<-cbind(Dummytest,Title_DummyT)
+
+
+Embarked_Dummy<-data.frame(dummy(Rawtrain$Embarked))
+Dummytrain<-cbind(Dummytrain,Embarked_Dummy)
+
+Embarked_DummyT<-data.frame(dummy(Rawtest$Embarked))
+Dummytest<-cbind(Dummytest,Embarked_DummyT)
+
+
+Cabin_Charcter_Dummy<-data.frame(dummy(Rawtrain$Cabin_Charcter))
+Dummytrain<-cbind(Dummytrain,Cabin_Charcter_Dummy)
+
+Cabin_Charcter_Dummy<-data.frame(dummy(Rawtest$Cabin_Charcter))
+Dummytest<-cbind(Dummytest,Cabin_Charcter_Dummy)
+
+```
+
+
 
 # Models
 
 ##Logoistic Regression 
 
+###First Models is basic Logistic Regression 
+These basic models scored ~~ 0.784-0.789
+
 ```{r}
-train1<-select(Rawtrain,Survived,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,AgeMedian_Nor)
+train1<-dplyr::select(Rawtrain,Survived,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,
+               TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,
+               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor)
+
+test1<-dplyr::select(Rawtest,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,
+               TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,
+               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor)
+
+
 ```
 
 
+
+
 ```{r}
-train_control <- trainControl(method = "cv", number = 5)
+
+#Split Data to train and validiation 
+set.seed(1254)
+train.index<-sample(1:nrow(train1),0.7*nrow(train1))
+xtrain<-train1[train.index,]
+valid<-train1[-train.index,]
+
+train_control <- trainControl(method = "cv", number = 10)
 set.seed(12345)
 #train the model on training set
 model.lg1 <- train(Survived ~ Sex+Fare+GroupNo+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title,
-               data = train1,
+               data = xtrain,
                 method = "glm",
                trControl =  train_control,
                family = binomial(link = "logit"))
+
+
 
 # print cv scores
 summary(model.lg1)
 model.lg1
 
+ypredict<-predict(model.lg1,newdata=valid)
+confusionMatrix(ypredict,valid$Survived)
+
+#Predict and write to file 
+#res<-predict(model.lg1,newdata = test1)
+#res<-data.frame(res)
+#colnames(res)<-c("Survived")
+#outcome<-cbind(Rawtest$PassengerId,res)
+#colnames(outcome)<-c("PassengerId","Survived")
+
+
+#write.csv(outcome,"out.csv",row.names=FALSE)
+
+
 ```
+
+This submission got 0.78947
+
+
+## Lasso on Logitic regression 
+
+```{r}
+set.seed(12312)
+x.train <- model.matrix(Survived ~Sex+Fare_Nor+GroupNo_Nor+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title, xtrain)
+
+ y<- ifelse(xtrain$Survived == 1, 1, 0)
+cv.lasso <- cv.glmnet(x.train, y, alpha = 1, family = "binomial",nfolds = 3)
+model.Lasso <- glmnet(x.train, y, alpha = 1, family = "binomial",
+                lambda = cv.lasso$lambda.min)
+
+
+
+
+x.test <- model.matrix(Survived ~Sex+Fare_Nor+GroupNo_Nor+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title, valid)
+probabilities <- model.Lasso %>% predict(newx = x.test)
+res <- ifelse(probabilities > 0.5, 1, 0)
+res<-as.factor(res)
+confusionMatrix(res,valid$Survived)
+
+
+
+```
+
+This submission got 0.77990
+
+
+
+## Ridge on Logitic regression 
+
+```{r}
+set.seed(12312)
+x.train <- model.matrix(Survived ~Sex+Fare_Nor+GroupNo_Nor+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title, xtrain)
+ y<- ifelse(xtrain$Survived == 1, 1, 0)
+
+cv.Ridge <- cv.glmnet(x.train, y, alpha = 0, family = "binomial")
+model.ridge <- glmnet(x.train, y, alpha = 0, family = "binomial",
+                lambda = cv.Ridge$lambda.min)
+
+x.test <- model.matrix(Survived ~Sex+Fare_Nor+GroupNo_Nor+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title, valid)
+probabilities <- cv.Ridge %>% predict(newx = x.test)
+res <- ifelse(probabilities > 0.5, 1, 0)
+res<-as.factor(res)
+confusionMatrix(res,valid$Survived)
+
+
+```
+
+This submission got
+ 0.77511
+ 
+
 
