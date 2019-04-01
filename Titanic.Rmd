@@ -31,20 +31,37 @@ library(caret)
 library(randomForest)
 library(rpart)
 library(leaps)
-library(dummies)
+library(fastDummies)
 library(glmnet)
 library(boot)
 ```
 
 # Titanic: Machine Learning from Disaster
 
-An R markdown for providing my approach to the Titanic
+R markdown for providing my approach to the Titanic
 Competition in Kaggle 
+This kernel includes data loading cleaning and some exploratory work
+it also contains basic modeling 
 
 # Exploratory Data 
 
 ### Normalize function Helper
+
+A simple normalize function, which normalizes
+continuous data to values between 0 and 1 
+some machine learning models work better with normalize data 
 ```{r}
+
+##########################
+#Function normalize      #
+#Input  X  vector        #
+#Return Normlize vector  #
+#                        #
+#                        #
+#########################
+
+
+
 normalize <- function(x) {
     return ((x - min(x,na.rm =TRUE)) / (max(x,na.rm =TRUE) - min(x,na.rm =TRUE)))
   }
@@ -91,7 +108,6 @@ One of the first steps is to take a look if the labels are not skew and we have 
 
 # Using the ggplot Package                         
 # Plotting a Bar plot of the Survivles Vs. Death   
-
 p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived)))+ 
   geom_bar(aes(y = (..count..)) , fill = c('red','green'))
 p<-p+xlab("Survived: 0 - No , 1 - Yes") + ylab("Count")
@@ -102,8 +118,7 @@ p
 ```
 
 There is some skew as the number of Survival is smaller (ratio of 60%:40%)
-To be handled later.
-
+It is not a large skew if we use cross-validation techniques it probably not a big issue 
 
 ## Missing Data 
 
@@ -111,6 +126,9 @@ Let's review how much data we are missing.
 Note: Some of the string variables have empty data and not null 
 so first, we replace Empty data by NA 
 ```{r}
+
+#Some of the missing data is NA, and some (mainly strings) is empty data 
+#convert empty strings to NA 
 Rawtrain<-Rawtrain %>% 
        mutate(Cabin = if_else(as.character(Cabin)=="", NA_character_ ,as.character(Cabin)))
 
@@ -120,8 +138,6 @@ Rawtrain<-Rawtrain %>%
 Rawtrain<-Rawtrain %>% 
        mutate(Embarked = if_else(as.character(Embarked)=="", NA_character_ ,as.character(Embarked)))
 
-
-
 Rawtest<-Rawtest %>% 
        mutate(Cabin = if_else(as.character(Cabin)=="", NA_character_ ,as.character(Cabin)))
 
@@ -130,37 +146,38 @@ Rawtest<-Rawtest %>%
 
 Rawtest<-Rawtest %>% 
        mutate(Embarked = if_else(as.character(Embarked)=="", NA_character_ ,as.character(Embarked)))
-
 
 
 ```
 
 
 ```{r}
- inspect.na(Rawtrain, barplot=TRUE)
- inspect.na(Rawtest, barplot=TRUE)
+#Using the Inspect package show all missing items  
+inspect.na(Rawtrain, barplot=TRUE)
+inspect.na(Rawtest, barplot=TRUE)
 ```
 
 Age and Cabin has a relatively high amount of missing data.
 
+
 ##Pclass 
-Pclass is a Factor or Categorical variable 
+Pclass will be used as  a Factor or Categorical variable 
 
 ```{r}
+#plot Pcalss Versus Death  Survived 
 theme_update(plot.title = element_text(hjust = 0.5))
-p<-ggplot(Rawtrain, aes((y =..count..),x=Pclass)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
+p<-ggplot(Rawtrain, aes((y =..count..),x=Pclass)) + 
+  geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
 p<-p+xlab("Pclass") + ylab("Count")
-p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
+p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"),
+                       labels=c("Death", "Survived"))
 p<-p+labs(title=" Bar Plot Pclass -- Survived ")
 p
 ```
-
 There are three class types - 1, 2 and 3. 
 It Seems that in Class 3 you have less chance to survive 
 While in Class 1 you had a higher chance to survive 
 In Class 2 the odd are Equal 
-
-
 Convert the Pclass to Factor variable
 
 ```{r}
@@ -170,36 +187,35 @@ Rawtest$Pclass<-as.factor(Rawtest$Pclass)
 Rawtrain$Pclass<-as.factor(Rawtrain$Pclass)
 
 ```
-
-
-
 ## Sex
 
-The First Parameter We will review is Sex.
-
+Plot Sex Versus Survived Death 
 ```{r}
 
-
-p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived),fill=Sex))+geom_bar()
-p<-p+scale_fill_manual("legend", values = c("male" = "blue", "female" = "red"))
+#Plot Sex Versus Survived Death 
+p<-ggplot(data=Rawtrain,aes(x=as.factor(Survived),
+                            fill=Sex))+geom_bar()
+p<-p+scale_fill_manual("legend", values =
+                         c("male" = "blue", "female" = "red"))
 p<-p+xlab("Survived: 0 - No, 1 - Yes") + ylab("Count")
-p<-p+labs(title="Survives Vs. No Survivors Based on Sex ")
-p<-p+geom_text(aes(label=..count..),stat="count",position=position_stack(0.5))
+p<-p+labs(title="Survives Vs. Death Based on Sex ")
+p<-p+geom_text(aes(label=..count..),
+               stat="count",position=position_stack(0.5))
 p
 ```
 
-
+Table of Sex Counts 
 ```{r}
 kable(table(Rawtrain$Sex),col.names = c("Sex","Frequency")) %>%
   kable_styling("striped", full_width = F) 
   
 ```
-
 Checking the Correlation 
 To check Correlation, we create a Categorical variable 
 1 - Female
 0 - Sex 
 ```{r}
+#Using GGpairs draw correlation graphs
 Rawtrain<-mutate(Rawtrain,Sexb=ifelse(Sex=="female",1,0))
 Rawtest<-mutate(Rawtest,Sexb=ifelse(Sex=="female",1,0))
 ggpairs(subset(Rawtrain,select=c("Survived", "Sexb")))
@@ -210,14 +226,15 @@ Conclusion :
 2. There is some correlation between Sex and Survival 
 2. Sex looks like a good predictor/Feature to use 
 
-
 ## Age 
-
-
+Plot Age Versus Survived Death 
 ```{r}
-p<-ggplot(Rawtrain,aes(x=Age,group=as.factor(Survived),fill=as.factor(Survived)))+
+#Plot Age Versus Survived Death 
+p<-ggplot(Rawtrain,aes(x=Age,group=as.factor(Survived),
+                       fill=as.factor(Survived)))+
   geom_density(alpha = 0.5)
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"),
+                       values = c("red","green"))
 
 p
 ```
@@ -225,17 +242,16 @@ Later we will use the Data from the Sex and names to complete the missing data.
 Look for outliers and another way to look at the relation between Age and survivals.
 
 ```{r}
-p<-ggplot(Rawtrain, aes(x=as.factor(Survived),y=Age,color = as.factor(Survived))) +   geom_boxplot()
+#Boxplot Age - Versus Survived or Death
+p<-ggplot(Rawtrain, aes(x=as.factor(Survived),y=Age,
+                        color = as.factor(Survived))) +   geom_boxplot()
 p<-p+scale_color_manual(values=c("red", "green"))
 p<-p+xlab("Survived: 0 - No , 1 - Yes") + ylab("Age - Years")
 p<-p+labs(title=" Boxplot Of Survivals/Death -- Age")
 p
 ```
-
 We can see that Age as a continuous feature/Predictor there are points 
 it is a good predictor and some that it doesn't 
-
-
 
 ## (Passenger) Name
 In this part, we are doing some simple text analytics 
@@ -250,9 +266,8 @@ The step we will take care
 4.Sort according to count (Frequency )
 ```{r}
 #Create Corpus
-
 corp <- corpus(as.character(RawData$Name))
-
+#Tokenize
 Text.Sentences <- tokens(
   x = tolower(corp),
   remove_punct = TRUE,
@@ -262,7 +277,6 @@ Text.Sentences <- tokens(
   remove_symbols = TRUE,
   remove_separators = TRUE,
   remove_url = TRUE)
-
 
 ##############################################
 # Create Uni Gram                            #
@@ -274,13 +288,12 @@ uni_DFM <- dfm(Text.Sentences)
 #Calculate the Col Sum 
 sums_U <- colSums(uni_DFM)
 
-
 #PAck in Data table 
 uni_words <- data.table(word_1 = names(sums_U), count = sums_U)
 
 #Sort 
 setorder(uni_words,-count)
-
+#Print Table
 kable(head(uni_words,15)) %>%
   kable_styling("striped", full_width = F) %>%
   add_indent(c(1, 3, 5))
@@ -310,11 +323,8 @@ chkmaster<-grepl(paste0(sprintf("(?=.*%s)", "master"), collapse = ''), Text, per
 
 RawData<-RawData%>%mutate(Title=ifelse(chkmrs,"Mrs",ifelse(chkmiss,"Miss",ifelse(chkmr,"Mr.",
                                                                                   ifelse(chkmaster,"Master","None")))))
-                                         
-     
-  
-```
 
+```
 
 Let's look at a summary after populating the title.
 
@@ -327,7 +337,6 @@ Let's look on the None title items
 kable(filter(RawData,Title =="None"))%>%
   kable_styling(c("striped", "bordered"))
 ```
-
 
 It looks like we should add the following 
 1. Dr.  - For Doctors 
@@ -354,7 +363,6 @@ RawData<-RawData%>%
 
 ```
 
-
 Merging the three  titles 
 
 ```{r}
@@ -367,11 +375,14 @@ test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
 Rawtest[,"Title"]<-RawData[test.index,]$Title
 ```
 
-
+Plot a Survived Death boxplot based on the titles 
 ```{r}
-p<-ggplot(Rawtrain, aes((y =..count..),x=Title)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
+#Plot a Survived Death boxplot based on the titles 
+p<-ggplot(Rawtrain, aes((y =..count..),x=Title)) +
+  geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
 p<-p+xlab("Title") + ylab("Count")
-p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
+p<-p+scale_fill_manual(name="Survived/Death  ",
+                       values=c("red", "green"), labels=c("Death", "Survived"))
 p<-p+labs(title=" Bar Plot Title -- Survived ")
 p
 ```
@@ -379,7 +390,8 @@ p
 
 ## Handling Title missing data using Age And Sex 
 
-First, let's see with current data what is the data about Age per Title. 
+First, let's see with current data what 
+is the data about Age per Title. 
 
 ```{r}
 p<-ggplot(Rawtrain, aes(x=as.factor(Title),y=Age,color = as.factor(Title))) +   geom_boxplot()
@@ -586,10 +598,16 @@ grid.arrange(p1,p2,p3,p4,nrow =4)
 
 
 ### Age Versus Titles - Test 
+Creating boxplot of Age versus titles 
+1.Original plot (without the NA)
+2.With the method of replacing NA by mean 
+3. With the technique of replacing Na by median 
+4. With the approach of replacing NA by Random variable 
 ```{r fig.width=14, fig.height=14}
 #Plot the Original Age column (this time without the NA values)
 p1<-ggplot(subset(Rawtest,!is.na(Age)), aes(x=as.factor(Title),
-                          y=Age,color = as.factor(Title))) +   geom_boxplot()
+                          y=Age,color = as.factor(Title))) +  
+  geom_boxplot()
 p1<-p1+xlab("Title") + ylab("Age - Years")
 p1<-p1+labs(title=" Boxplot Of Title -- Age ")
 p1<-p1+theme(axis.title.x = element_text(size = rel(1.2)),
@@ -603,7 +621,9 @@ p1<-p1+theme(axis.text.y = element_text(size=12 ))
 p1<-p1+ labs(col="Title")                          
 
 
-p2<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeMean,color = as.factor(Title))) +   geom_boxplot()
+#Plot the Age column (this time with Age mean instead of  the NA values)
+p2<-ggplot(Rawtest, aes(x=as.factor(Title),
+                        y=AgeMean,color = as.factor(Title))) +   geom_boxplot()
 p2<-p2+xlab("Title") + ylab("Age  - Years")
 p2<-p2+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Mean  ")
 p2<-p2+theme(axis.title.x = element_text(size = rel(1.2)),
@@ -616,8 +636,9 @@ p2<-p2+theme(axis.text.x = element_text(size=12 ))
 p2<-p2+theme(axis.text.y = element_text(size=12 ))
 p2<-p2+ labs(col="Title")  
 
-
-p3<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeMedian,color = as.factor(Title))) +   geom_boxplot()
+#Plot the Age column (this time with Age median instead of  the NA values)
+p3<-ggplot(Rawtest, aes(x=as.factor(Title),
+                        y=AgeMedian,color = as.factor(Title))) +   geom_boxplot()
 p3<-p3+xlab("Title") + ylab("Age  - Years")
 p3<-p3+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Median  ")
 p3<-p3+theme(axis.title.x = element_text(size = rel(1.2)),
@@ -630,7 +651,9 @@ p3<-p3+theme(axis.text.x = element_text(size=12 ))
 p3<-p3+theme(axis.text.y = element_text(size=12 ))
 p3<-p3+ labs(col="Title")  
 
-p4<-ggplot(Rawtest, aes(x=as.factor(Title),y=AgeNormal,color = as.factor(Title))) +   geom_boxplot()
+#Plot the Age column (this time with a normal random variable instead of  the NA values)
+p4<-ggplot(Rawtest, aes(x=as.factor(Title),
+                        y=AgeNormal,color = as.factor(Title))) +   geom_boxplot()
 p4<-p4+xlab("Title") + ylab("Age  - Years")
 p4<-p4+labs(title=" Boxplot Of Title -- Age Missing Data Method: - Normal Random Variable  ")
 p4<-p4+theme(axis.title.x = element_text(size = rel(1.2)),
@@ -644,15 +667,14 @@ p4<-p4+theme(axis.text.y = element_text(size=12 ))
 p4<-p4+ labs(col="Title")  
 
 
-
-
 grid.arrange(p1,p2,p3,p4,nrow =4)
 
 
 ```
+As we can see in all methods, there is no drastic change 
+(There are  more outlier, but this is expected as we had more samples)
 
-
-### Complete Missing titles 
+### Complete Missing Titles 
 We can complete the missing titles  data based on Age and Sex 
 We will choose either Mr., Mrs. Miss or Master  
 
@@ -665,8 +687,10 @@ res<-Rawtrain[Rawtrain$Title=="None",]
 #Female <28 - Miss
 #Female >=8 Mrs.
 #Male >18 Mr.
-Rawtrain[Rawtrain$Title=="None",]$Title<-ifelse(res$Age<18 & res$Sex=="male","Master",ifelse(res$Age<28 &   
-                        res$Sex=="female","Miss",ifelse(res$Sex=="female" & res$Age>=28,"Mrs","Mr.")))
+Rawtrain[Rawtrain$Title=="None",]$Title<-
+  ifelse(res$Age<18 & res$Sex=="male","Master",ifelse(res$Age<28 &   
+                        res$Sex=="female","Miss",
+                        ifelse(res$Sex=="female" & res$Age>=28,"Mrs","Mr.")))
 
 Rawtest[Rawtest$Title=="None",]
 
@@ -675,30 +699,36 @@ Rawtrain$Title<-as.factor(Rawtrain$Title)
 Rawtest$Title<-as.factor(Rawtest$Title)
 ```
 
-No missing data for Test set 
+No missing data for the Test set 
 
 ## SibSp & Parch
 
-Sibsp - Number of siblings / spouses aboard the Titanic
-Parch - Number of parents / children aboard the Titanic
+Sibsp - Number of siblings/spouses aboard the Titanic
+Parch - Number of parents/children aboard the Titanic
 
-
+Plot Sibsp Versus Survived Death 
 ```{r}
-p<-ggplot(Rawtrain,aes(x=as.factor(SibSp),group=as.factor(Survived),fill=as.factor(Survived)))+
+#Plot Sibsp Versus Survived Death 
+p<-ggplot(Rawtrain,aes(x=as.factor(SibSp),
+                       group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Sibsp Vs. Survived  ")
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",
+                       labels = c("Dead", "Survived"), values = c("red","green"))
 p<-p+xlab("Sibsp ") + ylab("Count")
 p
 ```
 
 
-
+Plot Parch Versus Survived Death 
 ```{r}
-p<-ggplot(Rawtrain,aes(x=as.factor(Parch),group=as.factor(Survived),fill=as.factor(Survived)))+
+#Plot Parch Versus Survived Death 
+p<-ggplot(Rawtrain,aes(x=as.factor(Parch),
+                       group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Parch Vs. Survived ")
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"),
+                       values = c("red","green"))
 p<-p+xlab("Parch ") + ylab("Count")
 p
 ```
@@ -713,7 +743,8 @@ First - Is the passengers alone
 Rawtrain<-Rawtrain%>%mutate(Isalone=ifelse((SibSp+Parch) > 0,0,1))
 Rawtest<-Rawtest%>%mutate(Isalone=ifelse((SibSp+Parch) > 0,0,1))
 
-p<-ggplot(Rawtrain,aes(x=as.factor(Isalone),group=as.factor(Survived),fill=as.factor(Survived)))+
+p<-ggplot(Rawtrain,aes(x=as.factor(Isalone),
+                       group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Isalone  Vs. Survived ")
 p<-p+xlab("Is Alone 1 - Yes  0 - No ") + ylab("Count")
@@ -722,13 +753,13 @@ p
 
 ```
 
-
 Create a column with the total number of people in the group
 
 ```{r}
 Rawtrain<-Rawtrain%>%mutate(GroupNo=SibSp+Parch)
 Rawtest<-Rawtest%>%mutate(GroupNo=SibSp+Parch)
-p<-ggplot(Rawtrain,aes(x=as.factor(GroupNo),group=as.factor(Survived),fill=as.factor(Survived)))+
+p<-ggplot(Rawtrain,aes(x=as.factor(GroupNo),
+                       group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of Group size  Vs. Survived  ")
 p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
@@ -740,24 +771,24 @@ p
 It looks like a group of 4 and above has less chance to survive. 
 
 ```{r}
-Rawtrain<-Rawtrain%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
-Rawtest<-Rawtest%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
+#Rawtrain<-Rawtrain%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
+#Rawtest<-Rawtest%>%mutate(IsLArgeGroup=ifelse(SibSp+Parch>=4,1,0))
 
 ```
 
 
 ## Ticket
-Ticket observations contain  a set of characters (or nothing)  and then numbers 
-The first step clean the ticket observations and create a column with only the character set (the of the ticket's number  will have no meaning probably)
-
+Ticket observations contain  a set of characters
+(or nothing)  and then numbers 
+The first step clean the ticket 
+observations and create a column with only 
+the character set and a separate column for the number
 ```{r}
 
 #Remove all the digits 
-#(Since the characters may have numbers also we remove when there is any occurrence of three or more )
-
+#(Since the characters may have numbers also we remove when there is an occurrence of three or more )
 RawData<-RawData%>%
 mutate(TicketChar = gsub("[0-9]{3,}","",Ticket))
-
 
 #Mark all empty Ticket Char by U 
 RawData$TicketChar<-ifelse(RawData$TicketChar=="","U",RawData$TicketChar)
@@ -767,17 +798,22 @@ RawData<-RawData%>%
 mutate(TicketNumbers = strtoi(str_extract(Ticket,"[0-9]{3,}")))
 
 
-#In the majority of the data the above condition (3 digits or above in a row )
-#is Enough, There are few other cases where there are only characters, or there is one digit 
+#In the majority of the data the above
+#condition (3 digits or above in a row )
+#is Enough, There are few other cases
+#where there are only characters, or there is one digit 
 #Handle these cases 
 #Extract the Digits and place them in the TicketNumbers
-res<-as.numeric((RawData%>%filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all(" [0-9]{1}$"))
+res<-as.numeric((RawData%>%
+                   filter(grepl("\\. [0-9]{1}$",Ticket)))$Ticket%>%str_extract_all(" [0-9]{1}$"))
 RawData[grep("\\. [0-9]{1}$",RawData$Ticket),]$TicketNumbers<-res
 #make sure that all values are numerics 
-RawData$TicketNumbers<-as.numeric(RawData$TicketNumbers)
+RawData$TicketNumbers<-
+  as.numeric(RawData$TicketNumbers)
 
 #Set number 100 to the Ticketnumbers 
-RawData[is.na(RawData$TicketNumbers),]$TicketNumbers<-as.integer(mean(RawData$TicketNumbers,na.rm = TRUE))
+RawData[is.na(RawData$TicketNumbers),]$TicketNumbers<-
+  as.integer(mean(RawData$TicketNumbers,na.rm = TRUE))
 
 
 #Create A normlize TicketNumbers 
@@ -792,10 +828,17 @@ RawData$TicketChar<-as.character(RawData$TicketChar)
 res<-as.character(subset(RawData,grepl("^[A-Za-z]+$",Ticket,perl=T))$Ticket)
 RawData[grep("^[A-Za-z]+$",RawData$Ticket,perl=T),]$TicketChar<-res
 
+#Remove dots  spaces and / from the Ticket chars
+RawData$TicketChar<-str_replace_all(RawData$TicketChar,"[.]","")
+RawData$TicketChar<-str_replace_all(RawData$TicketChar,"[ ]{1,}","")
+RawData$TicketChar<-str_replace_all(RawData$TicketChar,"[///]{1,}","")
+
 #Copy the Ticket new columns to the train and test sets
-Rawtrain[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
+Rawtrain[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-
+  RawData[1:nrow(Rawtrain),c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
-Rawtest[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-RawData[test.index,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
+Rawtest[,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]<-
+  RawData[test.index,c("TicketChar","TicketNumbers","TicketNumbers_Nor")]
 ```
 
 We need to verify that in the Test set there are no 
@@ -838,7 +881,10 @@ Rawtest$TicketChar<-df[test.index,]$TicketChar
 
 
 ```{r fig.width=14, fig.height=10}
-p<-ggplot(subset(Rawtrain,TicketChar!=""),aes(x=as.factor(TicketChar),group=as.factor(Survived),fill=as.factor(Survived)))+
+#Plot a barplot of the ticket prefix versus Survived or Death (Omit the Unspecified - U)
+p<-ggplot(subset(Rawtrain,TicketChar!="U"),
+          aes(x=as.factor(TicketChar),
+              group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar()
 p<-p+labs(title=" Bar Plot of TicketChar (Survived Vs. Death) ")
 p<-p+theme(axis.text.x=element_text(angle=45, hjust=1))
@@ -847,23 +893,11 @@ p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red"
 p
 ```
 
-
-```{r}
-#Create Dummy variables for the ticket char 
-#RawData<-cbind(RawData,dummy_cols(RawData$TicketChar))
-#Dummy_Col_Names<-colnames(RawData)[grepl("^.data_",colnames(RawData))]
-#Rawtrain[,Dummy_Col_Names]<-RawData[1:nrow(Rawtrain),Dummy_Col_Names]
-#test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
-#Rawtest[,Dummy_Col_Names]<-RawData[test.index,Dummy_Col_Names]
-
-
-```
-
-
 ## Fare
 
-Fare is a continues paramter
+The fare is a continues parameter
 There is one observation  missing
+Replace the missing value by the mean
 ```{r}
 if (sum(is.na(RawData$Fare))>0)
   RawData[is.na(RawData$Fare),]$Fare<-mean(RawData$Fare,na.rm = TRUE)
@@ -873,23 +907,27 @@ Rawtest[,c("Fare")]<-RawData[test.index,c("Fare")]
 
 
 ```
-
+plot the Fare Versus Survived or Death
 
 ```{r}
-p<-ggplot(Rawtrain,aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
+#plot the Fare Versus Survived or Death 
+p<-ggplot(Rawtrain,aes(x=Fare,
+                       group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_density(alpha = 0.5)
 p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) ")
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",
+                       labels = c("Dead", "Survived"), values = c("red","green"))
 p
 ```
 
-
+Split Fare to subarea 
 ```{r}
 p<-subset(Rawtrain,Fare<50)%>%
   ggplot(aes(x=Fare,group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_density(alpha = 0.5)
 p<-p+labs(title=" Density Plot of Fare (Survived Vs. Death) Fare < 50")
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",
+                       labels = c("Dead", "Survived"), values = c("red","green"))
 p
   
 ```
@@ -922,9 +960,12 @@ p
 Embarked - Port of Embarkation (C = Cherbourg; Q = Queenstown; S = Southampton)
 
 ```{r}
-p<-ggplot(Rawtrain, aes((y =..count..),x=Embarked)) + geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
+#plot Embarked Versus Death Survived 
+p<-ggplot(Rawtrain, aes((y =..count..),x=Embarked)) + 
+  geom_bar(aes(fill = as.factor(Survived)), position = "dodge")
 p<-p+xlab("Embarked") + ylab("Count")
-p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), labels=c("Death", "Survived"))
+p<-p+scale_fill_manual(name="Survived/Death  ",values=c("red", "green"), 
+                       labels=c("Death", "Survived"))
 p<-p+labs(title=" Bar Plot Embarked -- Survived ")
 p
 ```
@@ -944,18 +985,14 @@ Rawtrain$Embarked<-RawData[1:nrow(Rawtrain),]$Embarked
 test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
 Rawtest$Embarked<-RawData[test.index,]$Embarked
 
-#Convert to Factor
-#Rawtest$Embarked<-as.factor(Rawtest$Embarked)
-#Rawtrain$Embarked<-as.factor(Rawtrain$Embarked)
 ```
-
 
 ## Cabin
 The cabin data  has a high percentage of missing data 
 First, let's split the Cabin to the character and digits.
-Some of the cabin cells include more than one cabin but they are adjacent
+Some of the cabin cells include more than one cabin, 
+but they are adjacent
 We will use only the first one
-
 
 ```{r}
 RawData<-RawData%>%
@@ -977,19 +1014,19 @@ Rawtest[,"Cabin_Charcter"]<-RawData[test.index,]$Cabin_Charcter
   
 ```
 
-
-
 Lets see the Survivle/Death Versus the Cabin location 
 
 ```{r}
-p<-ggplot(subset(Rawtrain,is.na(Cabin_Charcter)==FALSE),aes(x=as.factor(Cabin_Charcter),group=as.factor(Survived),fill=as.factor(Survived)))+
+p<-ggplot(subset(Rawtrain,is.na(Cabin_Charcter)==FALSE),
+          aes(x=as.factor(Cabin_Charcter),
+              group=as.factor(Survived),fill=as.factor(Survived)))+
   geom_bar( position = "dodge")
 p<-p+labs(title=" Bar Plot of Cabin  Vs. Survived ")
 p<-p+xlab("Cabin ") + ylab("Count")
-p<-p+scale_fill_manual("legend",labels = c("Dead", "Survived"), values = c("red","green"))
+p<-p+scale_fill_manual("legend",
+                       labels = c("Dead", "Survived"), values = c("red","green"))
 p
 ```
-
 
 
 ## Normalize (Age, and Ticket Number)
@@ -1040,7 +1077,7 @@ Rawtest<-Rawtest%>%
 
 ```
 
-
+Convert Survived to a factor variable 
 ```{r}
 Rawtrain$Survived<-as.factor(Rawtrain$Survived)
 ```
@@ -1051,31 +1088,23 @@ Some models can not handle factor variables with more than 3 levels
 Creating dummy variable
 
 ```{r}
-Pclass_Dummy<-data.frame(dummy(Rawtrain$Pclass))
-Dummytrain<-Pclass_Dummy
+#Create  dummies variables for items with more than two options 
 
-Pclass_DummyT<-data.frame(dummy(Rawtest$Pclass))
-Dummytest<-Pclass_DummyT
-
-Title_Dummy<-data.frame(dummy(Rawtrain$Title))
-Dummytrain<-cbind(Dummytrain,Title_Dummy)
-
-Title_DummyT<-data.frame(dummy(Rawtest$Title))
-Dummytest<-cbind(Dummytest,Title_DummyT)
+RawData$Pclass<-as.factor(RawData$Pclass)
+RawData$Embarked<-as.factor(RawData$Embarked)
+RawData$Title<-as.factor(RawData$Title)
 
 
-Embarked_Dummy<-data.frame(dummy(Rawtrain$Embarked))
-Dummytrain<-cbind(Dummytrain,Embarked_Dummy)
-
-Embarked_DummyT<-data.frame(dummy(Rawtest$Embarked))
-Dummytest<-cbind(Dummytest,Embarked_DummyT)
+Raw_Dummy<-dummy_cols(RawData,select_columns = c("Pclass","Title","Embarked","Cabin_Charcter","TicketChar"),remove_first_dummy = TRUE)
+Raw_Dummy<-Raw_Dummy[,18:ncol(Raw_Dummy)]
 
 
-Cabin_Charcter_Dummy<-data.frame(dummy(Rawtrain$Cabin_Charcter))
-Dummytrain<-cbind(Dummytrain,Cabin_Charcter_Dummy)
 
-Cabin_Charcter_Dummy<-data.frame(dummy(Rawtest$Cabin_Charcter))
-Dummytest<-cbind(Dummytest,Cabin_Charcter_Dummy)
+#Copy the Cabin Character to the train and test sets 
+test.index<-(nrow(Rawtrain)+1):(nrow(Rawtrain)+nrow(Rawtest))
+Train_Dummy<-Raw_Dummy[-test.index,]
+Test_Dummy<-Raw_Dummy[test.index,]
+
 
 ```
 
@@ -1089,13 +1118,13 @@ Dummytest<-cbind(Dummytest,Cabin_Charcter_Dummy)
 These basic models scored ~~ 0.784-0.789
 
 ```{r}
-train1<-dplyr::select(Rawtrain,Survived,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,
+train1<-dplyr::select(Rawtrain,Survived,Pclass,Sex,AgeMean,Fare,Embarked,Title,GroupNo,
                TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,
-               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor)
+               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor,AgeMean_Nor)
 
-test1<-dplyr::select(Rawtest,Pclass,Sex,AgeMean_Nor,Fare,Embarked,Title,GroupNo,
+test1<-dplyr::select(Rawtest,Pclass,Sex,AgeMean,Fare,Embarked,Title,GroupNo,
                TicketChar,TicketNumbers,Cabin_Charcter,TicketNumbers_Nor,AgeNormal_Nor,
-               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor)
+               AgeMedian_Nor,Fare_Nor,TicketNumbers_Nor,GroupNo_Nor,AgeMean_Nor)
 
 
 ```
@@ -1143,6 +1172,50 @@ confusionMatrix(ypredict,valid$Survived)
 ```
 
 This submission got 0.78947
+
+
+
+## Logistic regression with interaction terms
+
+```{r}
+
+#Split Data to train and validiation 
+set.seed(1254)
+train.index<-sample(1:nrow(train1),0.7*nrow(train1))
+xtrain<-train1[train.index,]
+valid<-train1[-train.index,]
+
+train_control <- trainControl(method = "cv", number = 10)
+set.seed(12345)
+#train the model on training set
+model.lg2 <- train(Survived ~ Sex+Fare+GroupNo+AgeMean_Nor+Cabin_Charcter+Pclass+Embarked+Title+Sex*AgeMean_Nor+Title*AgeMean_Nor,
+               data = xtrain,
+                method = "glm",
+               trControl =  train_control,
+               family = binomial(link = "logit"))
+
+
+
+# print cv scores
+summary(model.lg2)
+model.lg2
+
+ypredict<-predict(model.lg2,newdata=valid)
+confusionMatrix(ypredict,valid$Survived)
+
+#Predict and write to file 
+#res<-predict(model.lg1,newdata = test1)
+#res<-data.frame(res)
+#colnames(res)<-c("Survived")
+#outcome<-cbind(Rawtest$PassengerId,res)
+#colnames(outcome)<-c("PassengerId","Survived")
+
+
+#write.csv(outcome,"out.csv",row.names=FALSE)
+
+
+```
+
 
 
 ## Lasso on Logitic regression 
@@ -1196,5 +1269,195 @@ confusionMatrix(res,valid$Survived)
 This submission got
  0.77511
  
+
+
+
+## Random Forest 
+```{r}
+#Split Data to train and validiation 
+set.seed(1254)
+train.index<-sample(1:nrow(train1),0.7*nrow(train1))
+xtrain<-train1[train.index,]
+valid<-train1[-train.index,]
+
+
+#Fit Random Forest Model
+rf = randomForest(as.factor(Survived) ~Sex+Fare+GroupNo+AgeMean+Cabin_Charcter+Pclass+Embarked+Title+TicketChar+TicketNumbers, #
+                   ntree = 400,nodesize =5,mtry=22,
+                   data = xtrain)
+plot(rf)  
+
+
+var.imp = data.frame(importance(rf,  
+                                 type=2))
+# make row names as columns
+var.imp$Variables = row.names(var.imp)  
+print(var.imp[order(var.imp$MeanDecreaseGini,decreasing = T),])
+
+#predict
+res<-predict(rf , valid)
+
+
+confusionMatrix(data = res,  
+                reference = valid$Survived)
+
+```
+
+### Random forest with dummies variables 
+
+```{r}
+trainOnlyDummies<-dplyr::select(Rawtrain,Survived,Sex,AgeMean,Fare,GroupNo,
+               TicketNumbers)
+testOnlyDummies<-dplyr::select(Rawtest,Sex,AgeMean,Fare,GroupNo,
+               TicketNumbers)
+
+trainOnlyDummies<-cbind(trainOnlyDummies,Train_Dummy)
+testOnlyDummies<-cbind(testOnlyDummies,Test_Dummy)
+
+
+set.seed(1254)
+train.index<-sample(1:nrow(trainOnlyDummies),.7*nrow(trainOnlyDummies))
+xtrain<-trainOnlyDummies[train.index,]
+valid<-trainOnlyDummies[-train.index,]
+
+set.seed(1254)
+#Fit Random Forest Model
+rf = randomForest(as.factor(Survived) ~., #
+                   ntree = 1500,nodesize =5,mtry=22,
+                   data = xtrain)
+plot(rf)  
+
+
+var.imp = data.frame(importance(rf,  
+                                 type=2))
+# make row names as columns
+var.imp$Variables = row.names(var.imp)  
+print(var.imp[order(var.imp$MeanDecreaseGini,decreasing = T),])
+
+#predict
+res<-predict(rf , valid)
+
+
+confusionMatrix(data = res,  
+                reference = valid$Survived)
+
+```
+
+
+
+###Tunning paramters
+
+```{r}
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+seed <- 7
+metric <- "Accuracy"
+set.seed(seed)
+x<-xtrain
+mtry <- sqrt(ncol(x))
+tunegrid <- expand.grid(.mtry=mtry)
+rf_default <- train(as.factor(Survived)~., data=x, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_default)
+```
+
+#### Tune Using Caret
+The caret package in R provides an excellent facility to tune machine learning algorithm parameters.
+
+As such, only mtry parameter is available in caret for tuning. The reason is its effect on the final accuracy and that it must be found empirically for a dataset.
+
+The ntree parameter is different in that it can be as large as you like, and continues to increases the accuracy up to some point. It is less difficult or critical to tune and could be limited more by compute time available more than anything.
+
+
+#### Random  and Grid Search for mtry
+
+
+
+trainOnlyDummies<-dplyr::select(Rawtrain,Survived,Sex,AgeMean,Fare,GroupNo,
+               TicketNumbers)
+testOnlyDummies<-dplyr::select(Rawtest,Sex,AgeMean,Fare,GroupNo,
+               TicketNumbers)
+
+trainOnlyDummies<-cbind(trainOnlyDummies,Train_Dummy)
+testOnlyDummies<-cbind(testOnlyDummies,Test_Dummy)
+
+
+set.seed(1254)
+train.index<-sample(1:nrow(trainOnlyDummies),0.7*nrow(trainOnlyDummies))
+xtrain<-trainOnlyDummies[train.index,]
+valid<-trainOnlyDummies[-train.index,]
+
+
+# Random Search
+
+
+
+# Manual Search
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+tunegrid <- expand.grid(.mtry=c(sqrt(ncol(x))))
+modellist <- list()
+for (ntree in c(1000, 1500, 2000, 2500)) {
+	set.seed(seed)
+	fit <- train(Class~., data=dataset, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control, ntree=ntree)
+	key <- toString(ntree)
+	modellist[[key]] <- fit
+}
+# compare results
+results <- resamples(modellist)
+summary(results)
+dotplot(results)
+
+
+
+
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+set.seed(seed)
+mtry <- sqrt(ncol(x))
+rf_random <- train(as.factor(Survived)~., data=x, method="rf", metric=metric, tuneLength=15, trControl=control)
+print(rf_random)
+plot(rf_random)
+
+
+#Grid Search 
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search="grid")
+set.seed(seed)
+tunegrid <- expand.grid(.mtry=c(1:25))
+rf_gridsearch <- train(as.factor(Survived)~., data=x, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control)
+print(rf_gridsearch)
+plot(rf_gridsearch)
+
+
+
+
+
+
+
+### Extend Caret search for best number of trees
+
+
+
+x <- xtrain[,c(1:ncol(xtrain))]
+y <- xtrain[,1]
+
+customRF <- list(type = "Classification", library = "randomForest", loop = NULL)
+customRF$parameters <- data.frame(parameter = c("mtry", "ntree"), class = rep("numeric", 2), label = c("mtry", "ntree"))
+customRF$grid <- function(x, y, len = NULL, search = "grid") {}
+customRF$fit <- function(x, y, wts, param, lev, last, weights, classProbs, ...) {
+  randomForest(x, y, mtry = param$mtry, ntree=param$ntree, ...)
+}
+customRF$predict <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+   predict(modelFit, newdata)
+customRF$prob <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+   predict(modelFit, newdata, type = "prob")
+customRF$sort <- function(x) x[order(x[,1]),]
+customRF$levels <- function(x) x$classes
+
+
+
+# train model
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+tunegrid <- expand.grid(.mtry=c(1:25), .ntree=c(1000, 1500, 2000, 2500))
+set.seed(seed)
+custom <- train(as.factor(Survived)~., data=xtrain, method=customRF, metric=metric, tuneGrid=tunegrid, trControl=control)
+summary(custom)
+plot(custom)
 
 
